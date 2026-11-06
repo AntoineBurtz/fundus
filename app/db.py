@@ -7,7 +7,7 @@ from typing import Iterator
 
 from . import config
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -47,6 +47,14 @@ CREATE TABLE IF NOT EXISTS sources (
     mime_type     TEXT,
     duration      REAL,
     -- Verarbeitung
+    -- Beweissicherung / Überwachung
+    watch_hours   INTEGER,                    -- Prüfintervall in Stunden, NULL = aus
+    next_check_at TEXT,
+    last_check_at TEXT,
+    watch_status  TEXT,                       -- unverändert | geändert | nicht erreichbar | gelöscht
+    watch_alert   INTEGER NOT NULL DEFAULT 0, -- ungesehene Änderung
+    last_change_at TEXT,
+    archive_url   TEXT,                       -- Sicherung bei archive.org
     state         TEXT NOT NULL DEFAULT 'bereit', -- wartet | läuft | bereit | fehler
     error         TEXT,
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
@@ -124,6 +132,63 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
     tokenize = 'unicode61 remove_diacritics 2'
 );
 
+-- Jede Sicherung einer Quelle ist eine Fassung (Erstsicherung, Änderung, manuell)
+CREATE TABLE IF NOT EXISTS versions (
+    id            INTEGER PRIMARY KEY,
+    source_id     INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    n             INTEGER NOT NULL,           -- laufende Nummer je Quelle
+    reason        TEXT NOT NULL,              -- erstsicherung | änderung | manuell | gelöscht
+    fetched_at    TEXT NOT NULL,
+    http_status   INTEGER,
+    final_url     TEXT,
+    title         TEXT,
+    text          TEXT,
+    text_hash     TEXT,
+    note          TEXT,                       -- z. B. Fehler beim Screenshot
+    manifest_path TEXT,
+    manifest_sha256 TEXT,
+    tsa_url       TEXT,                       -- Zeitstempeldienst (RFC 3161)
+    tsa_time      TEXT,                       -- vom Dienst bestätigter Zeitpunkt (UTC)
+    tsa_token_path TEXT,
+    tsa_error     TEXT,
+    UNIQUE (source_id, n)
+);
+
+-- Gesicherte Dateien mit Prüfsumme
+CREATE TABLE IF NOT EXISTS artifacts (
+    id         INTEGER PRIMARY KEY,
+    source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    version_id INTEGER REFERENCES versions(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,                 -- html | rendered | screenshot | pdf | media | original
+    path       TEXT NOT NULL,                 -- relativ zu FILES_DIR
+    sha256     TEXT NOT NULL,
+    size       INTEGER NOT NULL,
+    mime       TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+CREATE INDEX IF NOT EXISTS ix_artifacts_version ON artifacts(version_id);
+
+-- Beobachtete Social-Media-Accounts (Stories, Highlights, Beiträge)
+CREATE TABLE IF NOT EXISTS watched_accounts (
+    id            INTEGER PRIMARY KEY,
+    project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    platform      TEXT NOT NULL,              -- instagram | tiktok
+    handle        TEXT NOT NULL,
+    stories       INTEGER NOT NULL DEFAULT 1,
+    highlights    INTEGER NOT NULL DEFAULT 0,
+    posts         INTEGER NOT NULL DEFAULT 0,
+    transcribe    INTEGER NOT NULL DEFAULT 1,
+    interval_hours REAL NOT NULL DEFAULT 3,
+    active        INTEGER NOT NULL DEFAULT 1,
+    next_check_at TEXT,
+    last_check_at TEXT,
+    last_status   TEXT,
+    last_error    TEXT,
+    item_count    INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    UNIQUE (project_id, platform, handle)
+);
+
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -146,6 +211,21 @@ MIGRATIONS = [
     ("jobs", "eta", "REAL"),
     ("jobs", "note", "TEXT"),
     ("jobs", "cancel", "INTEGER NOT NULL DEFAULT 0"),
+    ("sources", "watch_hours", "INTEGER"),
+    ("sources", "next_check_at", "TEXT"),
+    ("sources", "last_check_at", "TEXT"),
+    ("sources", "watch_status", "TEXT"),
+    ("sources", "watch_alert", "INTEGER NOT NULL DEFAULT 0"),
+    ("sources", "last_change_at", "TEXT"),
+    ("sources", "archive_url", "TEXT"),
+    ("sources", "external_id", "TEXT"),          # z. B. instagram:3412…:1
+    ("sources", "account_id", "INTEGER"),
+]
+
+# Indizes auf nachträglich hinzugefügten Spalten
+POST_MIGRATION_SQL = [
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_sources_external ON sources(project_id, external_id) "
+    "WHERE external_id IS NOT NULL",
 ]
 
 
@@ -154,6 +234,8 @@ def migrate(conn: sqlite3.Connection) -> None:
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
         if column not in cols:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    for sql in POST_MIGRATION_SQL:
+        conn.execute(sql)
 
 
 def init() -> None:

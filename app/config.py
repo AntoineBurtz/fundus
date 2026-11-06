@@ -42,6 +42,26 @@ SUBTITLES = _env("FUNDUS_SUBTITLES", "auto")
 # Bevorzugte Untertitelsprachen in Reihenfolge
 SUBTITLE_LANGS = [x.strip() for x in _env("FUNDUS_SUBTITLE_LANGS", "de,en").split(",") if x.strip()]
 
+# ---- Beweissicherung
+# Screenshot + PDF + gerenderte Seite per Chromium (Playwright)
+CAPTURE = _env("FUNDUS_CAPTURE", "1") == "1"
+CHROMIUM_PATH = _env("FUNDUS_CHROMIUM_PATH", "") or None  # leer = Playwright-Chromium
+CAPTURE_ACCEPT_COOKIES = _env("FUNDUS_CAPTURE_ACCEPT_COOKIES", "1") == "1"
+# Unabhängige Zeitstempel nach RFC 3161. Es wird nur eine Prüfsumme übertragen.
+TSA_URLS = [u.strip() for u in _env(
+    "FUNDUS_TSA_URLS", "http://timestamp.digicert.com,https://freetsa.org/tsr"
+).split(",") if u.strip()]
+# Benachrichtigung bei Änderungen (ntfy-Topic-URL oder beliebiger JSON-Webhook,
+# z. B. Home-Assistant-Webhook). Leer = aus.
+NOTIFY_URL = _env("FUNDUS_NOTIFY_URL", "")
+# Öffentliche Adresse von Fundus für Links in Benachrichtigungen
+BASE_URL = _env("FUNDUS_BASE_URL", "").rstrip("/")
+
+# ---- Social-Media-Beobachtung (gallery-dl)
+# Optional: User-Agent des Browsers, aus dem die Cookies stammen (verringert Rückfragen)
+SOCIAL_USER_AGENT = _env("FUNDUS_SOCIAL_USER_AGENT", "")
+SOCIAL_TIMEOUT = int(_env("FUNDUS_SOCIAL_TIMEOUT", "1200"))
+
 # Videos zusätzlich zum Ton behalten (braucht deutlich mehr Platz)
 KEEP_VIDEO = _env("FUNDUS_KEEP_VIDEO", "0") == "1"
 

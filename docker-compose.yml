@@ -2,6 +2,7 @@ services:
   fundus:
     build: .
     container_name: fundus
+    shm_size: "512mb"   # Chromium braucht mehr Shared Memory als der Docker-Standard
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -22,6 +23,14 @@ services:
       FUNDUS_WHISPER_LANGUAGE: ""
       # 1 = Videos komplett behalten (sonst nur Tonspur)
       FUNDUS_KEEP_VIDEO: "0"
+      # Beweissicherung: Screenshot + PDF per Chromium (1 = an)
+      FUNDUS_CAPTURE: "1"
+      # Unabhängige Zeitstempel (RFC 3161), es wird nur eine Prüfsumme übertragen
+      FUNDUS_TSA_URLS: "http://timestamp.digicert.com,https://freetsa.org/tsr"
+      # Benachrichtigung bei Änderungen: ntfy-Topic oder Home-Assistant-Webhook
+      FUNDUS_NOTIFY_URL: ""
+      # Adresse von Fundus im Heimnetz, für Links in Benachrichtigungen
+      FUNDUS_BASE_URL: ""
       # Zugangsschutz – unbedingt setzen, wenn von außen erreichbar
       FUNDUS_USER: fundus
       FUNDUS_PASSWORD: ""

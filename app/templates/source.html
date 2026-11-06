@@ -21,7 +21,10 @@
       </div>
       <div class="doc-links">
         {% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">Original öffnen ↗</a>{% endif %}
-        {% if s.snapshot_path and s.kind in ('web', 'document', 'image') %}<a href="/s/{{ s.id }}/snapshot" target="_blank">Gesicherte Kopie</a>{% endif %}
+        {% if latest_arts.screenshot %}<a href="/a/{{ latest_arts.screenshot.id }}" target="_blank">Screenshot</a>{% endif %}
+        {% if latest_arts.pdf %}<a href="/a/{{ latest_arts.pdf.id }}" target="_blank">PDF</a>{% endif %}
+        {% if s.snapshot_path and s.kind in ('web', 'document', 'image') %}<a href="/s/{{ s.id }}/snapshot" target="_blank">{{ 'Original-HTML' if s.kind == 'web' else 'Gesicherte Kopie' }}</a>{% endif %}
+        {% if s.archive_url %}<a href="{{ s.archive_url }}" target="_blank" rel="noopener noreferrer">archive.org ↗</a>{% endif %}
         {% if s.media_path %}<a href="/files/{{ s.media_path }}" download>Mediendatei</a>{% endif %}
         {% if s.kind == 'web' and s.url %}<form method="post" action="/s/{{ s.id }}/run/media"><button class="linkish" title="Video/Audio dieser Seite laden und transkribieren">Als Medium laden</button></form>{% endif %}
       </div>
@@ -37,6 +40,13 @@
       </details>
       {% endif %}
     </header>
+
+    {% if s.watch_alert and versions %}
+    <div class="notice alert">
+      <b>{{ 'Die Seite ist nicht mehr abrufbar.' if s.watch_status == 'gelöscht' else 'Die Seite hat sich seit der letzten Sicherung geändert.' }}</b>
+      <a class="btn small" href="/s/{{ s.id }}/v/{{ versions[0].n }}">{{ 'Details ansehen' if s.watch_status == 'gelöscht' else 'Unterschiede ansehen' }}</a>
+    </div>
+    {% endif %}
 
     {% if s.state in ('wartet', 'läuft') %}
     <div class="notice working" id="jobbox">
@@ -66,6 +76,10 @@
       {% endif %}
       {% if segments %}<label class="follow"><input type="checkbox" id="follow" checked> Transkript mitlaufen lassen</label>{% endif %}
     </div>
+    {% endif %}
+
+    {% if s.description and s.kind in ('image', 'video', 'audio') and not s.text %}
+    <p class="caption">{{ s.description }}</p>
     {% endif %}
 
     {% if s.kind == 'image' and s.snapshot_path %}
@@ -100,6 +114,7 @@
     <div class="side-tabs" role="tablist">
       <button type="button" class="on" data-side="hl">Markierungen <small>{{ highlights|length }}</small></button>
       <button type="button" data-side="meta">Einordnung</button>
+      <button type="button" data-side="proof">Sicherung{% if s.watch_alert %} <span class="dot"></span>{% endif %}</button>
     </div>
 
     <section class="side-pane on" data-pane="hl">
@@ -148,6 +163,60 @@
         {% endfor %}
       </ul>
       {% endif %}
+    </section>
+
+    <section class="side-pane" data-pane="proof">
+      {% if s.url %}
+      <form method="post" action="/s/{{ s.id }}/watch" class="watch-form">
+        <label>Auf Änderungen überwachen
+          <select name="hours" onchange="this.form.submit()">
+            {% for h, label in WATCH_CHOICES.items() %}<option value="{{ h }}" {{ 'selected' if (s.watch_hours or 0) == h }}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        {% if s.watch_hours %}
+        <p class="hint">
+          {% if s.watch_status %}Zuletzt: <b>{{ s.watch_status }}</b>{% if s.last_check_at %} ({{ s.last_check_at|hdatetime }}){% endif %}.{% endif %}
+          Nächste Prüfung {{ s.next_check_at|hdatetime }}.
+        </p>
+        {% endif %}
+      </form>
+      <div class="row proof-actions">
+        {% if s.kind == 'web' %}<form method="post" action="/s/{{ s.id }}/run/recheck"><button class="btn small" title="Seite jetzt neu abrufen und als neue Fassung sichern">Jetzt neu sichern</button></form>{% endif %}
+        <form method="post" action="/s/{{ s.id }}/run/archive" onsubmit="return confirm('Bei archive.org sichern?\n\nDie Sicherung ist öffentlich: Jeder kann sehen, dass diese Seite jetzt archiviert wurde. Bei vertraulichen Recherchen ggf. erst nach Veröffentlichung.')"><button class="btn small">Bei archive.org sichern</button></form>
+      </div>
+      {% endif %}
+
+      {% if not versions %}
+      <p class="hint">Noch keine Sicherung mit Prüfsumme vorhanden{% if s.kind == 'web' %} – „Jetzt neu sichern“ legt eine an{% endif %}.</p>
+      {% endif %}
+      <ol class="versions">
+        {% for v in versions %}
+        <li class="ver {{ 'gone' if v.reason == 'gelöscht' }}">
+          <div class="ver-head">
+            <a href="/s/{{ s.id }}/v/{{ v.n }}"><b>Fassung {{ v.n }}</b></a>
+            <span>{{ REASONS[v.reason] }}</span>
+          </div>
+          <div class="meta">
+            <span>{{ v.fetched_at|hdatetime }}</span>
+            {% if v.http_status %}<span>HTTP {{ v.http_status }}</span>{% endif %}
+          </div>
+          {% if v.tsa_time %}
+          <div class="tsa ok" title="Unabhängiger Zeitstempel nach RFC 3161 über das Manifest dieser Fassung">✓ Zeitstempel {{ describe_tsa(v) }}</div>
+          {% elif v.manifest_sha256 %}
+          <div class="tsa missing" title="{{ v.tsa_error or '' }}">Ohne unabhängigen Zeitstempel
+            <form method="post" action="/s/{{ s.id }}/v/{{ v.n }}/seal"><button class="linkish">erneut anfordern</button></form>
+          </div>
+          {% endif %}
+          {% if varts[v.id] %}
+          <ul class="arts">
+            {% for a in varts[v.id] %}<li><a href="/a/{{ a.id }}" target="_blank">{{ ARTIFACT_LABELS.get(a.kind, a.kind) }}</a> <small>{{ a.size|filesize }}</small></li>{% endfor %}
+          </ul>
+          {% endif %}
+          {% if v.note %}<p class="hint">{{ v.note }}</p>{% endif %}
+          {% if v.reason != 'gelöscht' %}<a class="btn small" href="/s/{{ s.id }}/v/{{ v.n }}/nachweis.zip">Nachweis herunterladen (ZIP)</a>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
     </section>
 
     <section class="side-pane" data-pane="meta">

@@ -106,6 +106,8 @@
       <div class="sr-side">
         {% if s.event_date %}<div class="event-date" title="betrifft">{{ s.event_date|hdate }}{% if s.event_date_end %} – {{ s.event_date_end|hdate }}{% endif %}</div>{% endif %}
         <span class="status st-{{ s.status|replace(' ', '-') }}">{{ s.status }}</span>
+        {% if s.watch_alert %}<span class="watch-badge alert">{{ 'nicht mehr abrufbar' if s.watch_status == 'gelöscht' else 'geändert' }}</span>
+        {% elif s.watch_hours %}<span class="watch-badge" title="Wird auf Änderungen überwacht">überwacht</span>{% endif %}
         <div class="tags">{% for t in stags[s.id] %}<a href="?tag={{ t|urlencode }}">#{{ t }}</a>{% endfor %}</div>
       </div>
     </li>

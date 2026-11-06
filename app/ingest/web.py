@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import httpx
 import trafilatura
 
-from .. import config, repo
+from .. import config, evidence, repo
 from ..db import connection
 from ..jobs import JobContext
 from ..util import sha256_bytes
@@ -71,43 +71,52 @@ def ingest_web(source_id: int, job: JobContext):
             repo.update_source(conn, source_id, kind="audio" if ctype.startswith("audio/") else "video")
         return ("media", job.options)
 
-    folder = repo.source_dir(source_id)
-    folder.mkdir(parents=True, exist_ok=True)
     body = resp.content
+    final_url = str(resp.url)
 
     if ctype == "application/pdf" or url.lower().endswith(".pdf"):
-        path = folder / "original.pdf"
-        path.write_bytes(body)
         from .files import extract_file  # lazy, vermeidet Zyklus
 
+        with connection() as conn:
+            vid, _, folder = evidence.create_version(
+                conn, source_id, "erstsicherung", http_status=resp.status_code, final_url=final_url)
+        path = folder / "original.pdf"
+        path.write_bytes(body)
         info = extract_file(path, "application/pdf")
         with connection() as conn:
+            conn.execute("UPDATE versions SET text = ?, text_hash = ? WHERE id = ?",
+                         (info.get("text", ""), evidence.text_hash(info.get("text", "")), vid))
+            evidence.add_artifact(conn, source_id, vid, "original", path, "application/pdf")
             repo.update_source(
                 conn, source_id, kind="document", snapshot_path=str(path.relative_to(config.FILES_DIR)),
                 mime_type="application/pdf", content_hash=sha256_bytes(body),
                 title=src["title"] or info.get("title") or urlparse(url).path.rsplit("/", 1)[-1],
                 author=src["author"] or info.get("author", ""), text=info.get("text", ""),
             )
-        return None
+        return [("seal", {"version_id": vid})]
 
-    path = folder / "page.html"
-    path.write_bytes(body)
     html = resp.text
-    meta = extract_html(html, str(resp.url))
-    fields = {
-        "snapshot_path": str(path.relative_to(config.FILES_DIR)),
-        "mime_type": ctype or mimetypes.guess_type(url)[0],
-        "content_hash": sha256_bytes(body),
-        "text": meta["text"],
-    }
-    # Vom Nutzer gesetzte Werte nicht überschreiben
-    for key in ("title", "author", "site_name", "description", "published_at", "language"):
-        if meta.get(key) and not src[key]:
-            fields[key] = meta[key]
-    if not (fields.get("title") or src["title"]):
-        fields["title"] = urlparse(url).netloc
-    if str(resp.url) != url:
-        fields["notes"] = ((src["notes"] + "\n") if src["notes"] else "") + f"Weitergeleitet zu: {resp.url}"
+    meta = extract_html(html, final_url)
     with connection() as conn:
+        vid, _, folder = evidence.create_version(
+            conn, source_id, "erstsicherung", http_status=resp.status_code, final_url=final_url,
+            title=meta["title"] or src["title"], text=meta["text"])
+        path = folder / "page.html"
+        path.write_bytes(body)
+        evidence.add_artifact(conn, source_id, vid, "html", path, ctype or "text/html")
+        fields = {
+            "snapshot_path": str(path.relative_to(config.FILES_DIR)),
+            "mime_type": ctype or mimetypes.guess_type(url)[0],
+            "content_hash": sha256_bytes(body),
+            "text": meta["text"],
+        }
+        # Vom Nutzer gesetzte Werte nicht überschreiben
+        for key in ("title", "author", "site_name", "description", "published_at", "language"):
+            if meta.get(key) and not src[key]:
+                fields[key] = meta[key]
+        if not (fields.get("title") or src["title"]):
+            fields["title"] = urlparse(url).netloc
+        if final_url != url:
+            fields["notes"] = ((src["notes"] + "\n") if src["notes"] else "") + f"Weitergeleitet zu: {final_url}"
         repo.update_source(conn, source_id, **fields)
-    return None
+    return [("capture", {"version_id": vid})]

@@ -6,13 +6,18 @@ Recherchen · Webseiten sichern · Video/Podcast laden + Whisper-Transkription �
 ## ✅ Phase 1.1 – Transkription auf CPU
 Vorhandene Untertitel nutzen (VTT/SRT/TTML) · Whisper-Modell je Quelle · Fortschritt + Restzeit · Abbrechen · eigene Warteschlange für Transkriptionen · CPU-Threads begrenzen
 
-## Phase 2 – Beweissicherung & Erfassung
-- [ ] Screenshot + PDF der Seite (headless Chromium) zusätzlich zum HTML
-- [ ] Optional automatisch bei archive.org sichern, Archiv-Link speichern
-- [ ] Änderungsüberwachung: Seiten regelmäßig neu abrufen, Versionen + Diff, Hinweis bei Änderung/Löschung
+## ✅ Phase 2a – Beweissicherung
+Fassungen mit Screenshot, PDF, gerenderter Seite · SHA-256-Manifest · unabhängiger RFC-3161-Zeitstempel · Nachweis-ZIP mit Prüfanleitung · Änderungsüberwachung mit Vorher-nachher-Vergleich · Hinweis bei Löschung · ntfy/Home-Assistant-Benachrichtigung · archive.org auf Knopfdruck
+
+## ✅ Phase 2b – Social Media
+Instagram/TikTok-Accounts beobachten: Stories, Highlights, Beiträge automatisch sichern, versiegeln, transkribieren · Cookies des Recherche-Kontos · Hinweis bei abgelaufener Anmeldung
+
+## Phase 2c – Erfassung
+- [ ] Sicherungsnachweis zusätzlich als PDF-Bericht (für Redaktion/Anwalt)
 - [ ] Seiten hinter Paywall/Login: Übernahme aus Browser-Erweiterung (HTML direkt aus dem eingeloggten Tab senden)
 - [ ] Podcast-RSS und YouTube-Kanäle abonnieren → neue Folgen automatisch holen
-- [ ] OCR für Scans und Bilder (Tesseract / ocrmypdf)
+- [ ] OCR für Scans, Bilder und Story-Texte (Tesseract / ocrmypdf)
+- [ ] Weitere Plattformen beobachten (X, Bluesky, Telegram-Kanäle, Facebook-Seiten)
 - [ ] E-Mail-Eingang (Weiterleitung an Fundus-Adresse)
 
 ## Phase 3 – Einordnen

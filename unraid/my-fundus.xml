@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Fundus</Name>
+  <Repository>ghcr.io/antoineburtz/fundus:latest</Repository>
+  <Registry>https://github.com/AntoineBurtz/fundus/pkgs/container/fundus</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/AntoineBurtz/fundus/issues</Support>
+  <Project>https://github.com/AntoineBurtz/fundus</Project>
+  <Overview>Fundus – selbst gehostete Recherche-Plattform: Webseiten, Videos, Podcasts und Social-Media-Stories sichern, transkribieren, markieren, zeitlich einordnen und auf Änderungen überwachen. Alle Daten liegen im Ordner /data.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams>--shm-size=512m</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <Requires>Beim ersten Transkribieren lädt Whisper das Modell (small ca. 480 MB) in den Datenordner.</Requires>
+
+  <Config Name="Web-Oberfläche" Target="8000" Default="8000" Mode="tcp" Description="Port der Weboberfläche" Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="Daten" Target="/data" Default="/mnt/user/appdata/fundus" Mode="rw" Description="Datenbank, gesicherte Seiten, Mediendateien, Whisper-Modelle. Diesen Ordner sichern!" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/fundus</Config>
+
+  <Config Name="Benutzername" Target="FUNDUS_USER" Default="fundus" Description="Login-Name für den Zugangsschutz" Type="Variable" Display="always" Required="false" Mask="false">fundus</Config>
+  <Config Name="Passwort" Target="FUNDUS_PASSWORD" Default="" Description="Leer = kein Login. Unbedingt setzen, wenn Fundus von außen erreichbar ist." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="Whisper-Modell" Target="FUNDUS_WHISPER_MODEL" Default="small|tiny|base|medium|large-v3-turbo" Description="Standardmodell für Transkriptionen (pro Quelle änderbar). Ohne Grafikkarte: small oder base." Type="Variable" Display="always" Required="false" Mask="false">small</Config>
+  <Config Name="Whisper-Sprache" Target="FUNDUS_WHISPER_LANGUAGE" Default="" Description="Leer = automatisch erkennen, sonst z. B. de" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Whisper-CPU-Threads" Target="FUNDUS_WHISPER_THREADS" Default="0" Description="0 = halbe Kernzahl, damit andere Container nicht ausgebremst werden" Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+  <Config Name="Untertitel nutzen" Target="FUNDUS_SUBTITLES" Default="auto|manual|off" Description="auto = vorhandene Untertitel statt Whisper (schnell), manual = nur handgemachte, off = immer Whisper" Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
+  <Config Name="Videos behalten" Target="FUNDUS_KEEP_VIDEO" Default="0|1" Description="1 = Videos komplett speichern, 0 = nur Tonspur (spart Platz)" Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+
+  <Config Name="Screenshot + PDF" Target="FUNDUS_CAPTURE" Default="1|0" Description="Webseiten zusätzlich per Chromium als Screenshot und PDF sichern" Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Zeitstempeldienste" Target="FUNDUS_TSA_URLS" Default="http://timestamp.digicert.com,https://freetsa.org/tsr" Description="RFC-3161-Dienste, der Reihe nach. Es wird nur eine Prüfsumme übertragen. Leer = aus." Type="Variable" Display="advanced" Required="false" Mask="false">http://timestamp.digicert.com,https://freetsa.org/tsr</Config>
+  <Config Name="Benachrichtigung" Target="FUNDUS_NOTIFY_URL" Default="" Description="ntfy-Topic (https://ntfy.sh/...) oder Home-Assistant-Webhook für Änderungsmeldungen" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Eigene Adresse" Target="FUNDUS_BASE_URL" Default="" Description="z. B. http://192.168.1.10:8000 – für Links in Benachrichtigungen" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Social-Media User-Agent" Target="FUNDUS_SOCIAL_USER_AGENT" Default="" Description="Optional: User-Agent des Browsers, aus dem die Instagram/TikTok-Cookies stammen" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Zeitzone" Target="TZ" Default="Europe/Berlin" Description="Zeitzone für Anzeige und Logs" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Berlin</Config>
+</Container>

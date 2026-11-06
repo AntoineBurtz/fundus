@@ -16,6 +16,7 @@
         <div class="meta">
           <span>{{ p.source_count }} Quelle{{ 'n' if p.source_count != 1 }}</span>
           <span>{{ p.highlight_count }} Markierung{{ 'en' if p.highlight_count != 1 }}</span>
+          {% if p.alert_count %}<span class="watch-badge alert">{{ p.alert_count }} geändert</span>{% endif %}
           {% if p.last_activity %}<span>zuletzt {{ p.last_activity|hdatetime }}</span>{% endif %}
         </div>
       </a>

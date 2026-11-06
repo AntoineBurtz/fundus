@@ -20,7 +20,9 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from pydantic import BaseModel
 
-from . import config, db, repo, worker
+from . import config, db, evidence, repo, social, worker
+from .diff import diff_blocks
+from .ingest.watch import WATCH_CHOICES, set_watch
 from .ingest.files import kind_for
 from .ingest.web import looks_like_media
 from .render import color_slug, render_blocks, resolve_highlights
@@ -78,6 +80,13 @@ def _job_options(whisper_model: str = "", use_subtitles: str | None = "1",
 
 
 templates.env.filters["eta"] = _eta
+templates.env.filters["filesize"] = lambda n: (
+    f"{n / 1_048_576:.1f} MB" if n >= 1_048_576 else f"{max(1, round(n / 1024))} KB").replace(".", ",")
+templates.env.filters["basename"] = lambda p: Path(p).name if p else ""
+templates.env.globals.update(PLATFORMS=social.PLATFORMS, CONTENT=social.CONTENT,
+                             INTERVALS=social.INTERVALS)
+templates.env.globals.update(ARTIFACT_LABELS=evidence.ARTIFACT_LABELS, REASONS=evidence.REASONS,
+                             WATCH_CHOICES=WATCH_CHOICES, describe_tsa=evidence.describe_tsa)
 templates.env.globals.update(KINDS=repo.KINDS, STATUSES=repo.STATUSES, COLORS=repo.COLORS,
                              WHISPER_MODELS=config.WHISPER_MODELS,
                              DEFAULT_MODEL=config.WHISPER_MODEL)
@@ -254,6 +263,94 @@ def export_markdown(pid: int):
     )
 
 
+# ------------------------------------------------------------ Beobachtete Accounts
+
+@app.get("/p/{pid}/accounts", response_class=HTMLResponse)
+def project_accounts(request: Request, pid: int, msg: str = ""):
+    with db.connection() as conn:
+        ctx = _project_ctx(conn, pid)
+        accounts = social.list_accounts(conn, pid)
+    cookies = {p: social.cookie_status(p) for p in social.PLATFORMS}
+    return render(request, "accounts.html", tab="accounts", accounts=accounts, cookies=cookies,
+                  msg=msg, busy=any(a["job_status"] for a in accounts), **ctx)
+
+
+@app.post("/p/{pid}/accounts")
+def add_account(pid: int, platform: str = Form(...), handle: str = Form(...),
+                stories: str | None = Form(None), highlights: str | None = Form(None),
+                posts: str | None = Form(None), transcribe: str | None = Form(None),
+                interval_hours: float = Form(3)):
+    try:
+        with db.connection() as conn:
+            aid = social.add_account(conn, pid, platform, handle, stories=bool(stories),
+                                     highlights=bool(highlights), posts=bool(posts),
+                                     transcribe=bool(transcribe), interval_hours=interval_hours)
+            social.enqueue_check(conn, aid)
+    except ValueError as e:
+        return back(f"/p/{pid}/accounts", msg=str(e))
+    worker.wake()
+    return back(f"/p/{pid}/accounts", msg="Account wird jetzt zum ersten Mal abgerufen …")
+
+
+def _account_or_404(conn, aid: int):
+    return social.get_account(conn, aid) or _404("Account nicht gefunden")
+
+
+@app.post("/accounts/{aid}/edit")
+def edit_account(aid: int, stories: str | None = Form(None), highlights: str | None = Form(None),
+                 posts: str | None = Form(None), transcribe: str | None = Form(None),
+                 interval_hours: float = Form(3)):
+    with db.connection() as conn:
+        a = _account_or_404(conn, aid)
+        if not (stories or highlights or posts):
+            return back(f"/p/{a['project_id']}/accounts", msg="Mindestens eine Inhaltsart auswählen.")
+        social.update_account(conn, aid, stories=int(bool(stories)), highlights=int(bool(highlights)),
+                              posts=int(bool(posts)), transcribe=int(bool(transcribe)),
+                              interval_hours=interval_hours)
+    return back(f"/p/{a['project_id']}/accounts", msg="Gespeichert")
+
+
+@app.post("/accounts/{aid}/{action}")
+def account_action(aid: int, action: str):
+    with db.connection() as conn:
+        a = _account_or_404(conn, aid)
+        if action == "check":
+            social.enqueue_check(conn, aid)
+        elif action == "pause":
+            social.update_account(conn, aid, active=0 if a["active"] else 1)
+        elif action == "delete":
+            social.delete_account(conn, aid)
+        else:
+            _404()
+    worker.wake()
+    return back(f"/p/{a['project_id']}/accounts")
+
+
+# ------------------------------------------------------------ Einstellungen
+
+@app.get("/einstellungen", response_class=HTMLResponse)
+def settings(request: Request, msg: str = ""):
+    cookies = {p: social.cookie_status(p) for p in social.PLATFORMS}
+    return render(request, "settings.html", cookies=cookies, msg=msg, cfg=config)
+
+
+@app.post("/einstellungen/cookies/{platform}")
+async def upload_cookies(platform: str, file: UploadFile = File(...)):
+    try:
+        info = social.save_cookies(platform, await file.read())
+    except ValueError as e:
+        return back("/einstellungen", msg=str(e))
+    note = "" if info["session"] else " Achtung: kein Anmelde-Cookie (sessionid) gefunden – war das Konto eingeloggt?"
+    return back("/einstellungen", msg=f"Cookies für {social.PLATFORMS[platform]} gespeichert.{note}")
+
+
+@app.post("/einstellungen/cookies/{platform}/delete")
+def remove_cookies(platform: str):
+    if platform in social.PLATFORMS:
+        social.delete_cookies(platform)
+    return back("/einstellungen", msg="Cookies gelöscht")
+
+
 # ------------------------------------------------------------ Quellen anlegen
 
 @app.post("/p/{pid}/sources/url")
@@ -360,9 +457,13 @@ def source(request: Request, sid: int, t: float | None = None, h: int | None = N
         tags = repo.source_tags(conn, [sid])[sid]
         jobs = repo.source_jobs(conn, sid)
         active = repo.active_job(conn, sid)
+        versions = evidence.list_versions(conn, sid)
+        varts = evidence.artifacts_by_version(conn, sid)
+    latest_arts = {a["kind"]: a for v in reversed(versions) for a in varts.get(v["id"], [])}
     blocks = render_blocks(s["text"], hls, segments)
     return render(request, "source.html", s=s, project=p, blocks=blocks, highlights=hls,
                   orphans=orphans, htags=htags, tags=tags, jobs=jobs, segments=segments, active=active,
+                  versions=versions, varts=varts, latest_arts=latest_arts,
                   start_time=t, focus=h, msg=msg)
 
 
@@ -436,10 +537,73 @@ def rerun(sid: int, action: str, whisper_model: str = Form("")):
             repo.enqueue_job(conn, sid, "transcribe", _job_options(whisper_model, force_whisper=True))
         elif action == "cancel":
             repo.request_cancel(conn, sid)
+        elif action == "recheck" and s["url"] and s["kind"] == "web":
+            repo.enqueue_job(conn, sid, "recheck", {"force": True})
+        elif action == "archive" and s["url"]:
+            repo.enqueue_job(conn, sid, "archive")
         else:
             return back(f"/s/{sid}", msg="Aktion nicht möglich.")
     worker.wake()
     return back(f"/s/{sid}")
+
+
+@app.post("/s/{sid}/watch")
+def watch(sid: int, hours: int = Form(0)):
+    with db.connection() as conn:
+        s = repo.get_source(conn, sid) or _404()
+        if hours and not s["url"]:
+            return back(f"/s/{sid}", msg="Nur Quellen mit URL können überwacht werden.")
+        set_watch(conn, sid, hours if hours in WATCH_CHOICES and hours > 0 else None)
+    return back(f"/s/{sid}", msg="Überwachung " + ("eingeschaltet" if hours else "ausgeschaltet"))
+
+
+@app.get("/s/{sid}/v/{n}", response_class=HTMLResponse)
+def version(request: Request, sid: int, n: int, msg: str = ""):
+    """Eine Fassung ansehen – mit Unterschieden zur vorherigen."""
+    with db.connection() as conn:
+        s = repo.get_source(conn, sid) or _404()
+        v = evidence.get_version_n(conn, sid, n) or _404("Fassung nicht gefunden")
+        p = repo.get_project(conn, s["project_id"])
+        prev = conn.execute(
+            """SELECT * FROM versions WHERE source_id = ? AND n < ? AND text_hash IS NOT NULL
+               ORDER BY n DESC LIMIT 1""", (sid, n)).fetchone()
+        arts = evidence.artifacts_for(conn, v["id"])
+        total = conn.execute("SELECT MAX(n) FROM versions WHERE source_id = ?", (sid,)).fetchone()[0]
+        if s["watch_alert"] and n == total:
+            conn.execute("UPDATE sources SET watch_alert = 0 WHERE id = ?", (sid,))
+    blocks, stats = diff_blocks(prev["text"] or "", v["text"] or "") if prev and v["text"] is not None else ([], None)
+    return render(request, "version.html", s=s, v=v, prev=prev, arts=arts, project=p,
+                  blocks=blocks, stats=stats, total=total, msg=msg)
+
+
+@app.post("/s/{sid}/v/{n}/seal")
+def reseal(sid: int, n: int):
+    with db.connection() as conn:
+        v = evidence.get_version_n(conn, sid, n) or _404()
+        repo.enqueue_job(conn, sid, "seal", {"version_id": v["id"]})
+    worker.wake()
+    return back(f"/s/{sid}/v/{n}", msg="Zeitstempel wird angefordert …")
+
+
+@app.get("/s/{sid}/v/{n}/nachweis.zip")
+def evidence_zip(sid: int, n: int):
+    with db.connection() as conn:
+        v = evidence.get_version_n(conn, sid, n) or _404()
+        name, data = evidence.evidence_zip(conn, v["id"])
+    return Response(data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/a/{aid}")
+def artifact(aid: int, download: int = 0):
+    """Gesicherte Datei ausliefern. HTML nur in einer Sandbox ohne Skripte."""
+    with db.connection() as conn:
+        a = conn.execute("SELECT * FROM artifacts WHERE id = ?", (aid,)).fetchone() or _404()
+    path = _safe_file(a["path"])
+    headers = _sandbox_headers(a["mime"] or path.name)
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="{path.name}"'
+    return FileResponse(path, headers=headers, media_type=a["mime"] or None)
 
 
 @app.get("/s/{sid}/snapshot")
@@ -450,13 +614,26 @@ def snapshot(sid: int):
     if not s["snapshot_path"]:
         _404("Kein Original gesichert")
     path = _safe_file(s["snapshot_path"])
-    headers = {"Content-Security-Policy": "sandbox; default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src * data:"}
-    return FileResponse(path, headers=headers, media_type=s["mime_type"] or None)
+    return FileResponse(path, headers=_sandbox_headers(s["mime_type"] or path.name),
+                        media_type=s["mime_type"] or None)
 
 
 @app.get("/files/{rel:path}")
 def files(rel: str):
-    return FileResponse(_safe_file(rel), headers={"Content-Security-Policy": "sandbox"})
+    path = _safe_file(rel)
+    return FileResponse(path, headers=_sandbox_headers(path.name))
+
+
+def _sandbox_headers(mime_or_name: str) -> dict:
+    """Gesicherte Webseiten dürfen kein JavaScript ausführen (Sandbox).
+
+    PDFs und Bilder bekommen keine Sandbox, sonst zeigt der Browser sie nicht an.
+    """
+    m = (mime_or_name or "").lower()
+    if "html" in m or m.endswith((".htm", ".svg")) or "svg" in m or "xml" in m:
+        return {"Content-Security-Policy": "sandbox; default-src 'none'; img-src * data:; "
+                                           "style-src * 'unsafe-inline'; font-src * data:"}
+    return {"X-Content-Type-Options": "nosniff"}
 
 
 def _safe_file(rel: str) -> Path:
