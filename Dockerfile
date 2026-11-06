@@ -1,12 +1,17 @@
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.title="Fundus" \
+      org.opencontainers.image.description="Selbst gehostete Recherche-Plattform" \
+      org.opencontainers.image.source="https://github.com/AntoineBurtz/fundus"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PYTHONUNBUFFERED=1 \
-    FUNDUS_DATA_DIR=/data
+    FUNDUS_DATA_DIR=/data \
+    TZ=Europe/Berlin
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+ && apt-get install -y --no-install-recommends ffmpeg ca-certificates tzdata \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
