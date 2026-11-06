@@ -7,7 +7,7 @@ from typing import Iterator
 
 from . import config
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -47,6 +47,14 @@ CREATE TABLE IF NOT EXISTS sources (
     mime_type     TEXT,
     duration      REAL,
     -- Verarbeitung
+    -- Beweissicherung / Überwachung
+    watch_hours   INTEGER,                    -- Prüfintervall in Stunden, NULL = aus
+    next_check_at TEXT,
+    last_check_at TEXT,
+    watch_status  TEXT,                       -- unverändert | geändert | nicht erreichbar | gelöscht
+    watch_alert   INTEGER NOT NULL DEFAULT 0, -- ungesehene Änderung
+    last_change_at TEXT,
+    archive_url   TEXT,                       -- Sicherung bei archive.org
     state         TEXT NOT NULL DEFAULT 'bereit', -- wartet | läuft | bereit | fehler
     error         TEXT,
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
@@ -124,6 +132,42 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
     tokenize = 'unicode61 remove_diacritics 2'
 );
 
+-- Jede Sicherung einer Quelle ist eine Fassung (Erstsicherung, Änderung, manuell)
+CREATE TABLE IF NOT EXISTS versions (
+    id            INTEGER PRIMARY KEY,
+    source_id     INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    n             INTEGER NOT NULL,           -- laufende Nummer je Quelle
+    reason        TEXT NOT NULL,              -- erstsicherung | änderung | manuell | gelöscht
+    fetched_at    TEXT NOT NULL,
+    http_status   INTEGER,
+    final_url     TEXT,
+    title         TEXT,
+    text          TEXT,
+    text_hash     TEXT,
+    note          TEXT,                       -- z. B. Fehler beim Screenshot
+    manifest_path TEXT,
+    manifest_sha256 TEXT,
+    tsa_url       TEXT,                       -- Zeitstempeldienst (RFC 3161)
+    tsa_time      TEXT,                       -- vom Dienst bestätigter Zeitpunkt (UTC)
+    tsa_token_path TEXT,
+    tsa_error     TEXT,
+    UNIQUE (source_id, n)
+);
+
+-- Gesicherte Dateien mit Prüfsumme
+CREATE TABLE IF NOT EXISTS artifacts (
+    id         INTEGER PRIMARY KEY,
+    source_id  INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    version_id INTEGER REFERENCES versions(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,                 -- html | rendered | screenshot | pdf | media | original
+    path       TEXT NOT NULL,                 -- relativ zu FILES_DIR
+    sha256     TEXT NOT NULL,
+    size       INTEGER NOT NULL,
+    mime       TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+CREATE INDEX IF NOT EXISTS ix_artifacts_version ON artifacts(version_id);
+
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -146,6 +190,13 @@ MIGRATIONS = [
     ("jobs", "eta", "REAL"),
     ("jobs", "note", "TEXT"),
     ("jobs", "cancel", "INTEGER NOT NULL DEFAULT 0"),
+    ("sources", "watch_hours", "INTEGER"),
+    ("sources", "next_check_at", "TEXT"),
+    ("sources", "last_check_at", "TEXT"),
+    ("sources", "watch_status", "TEXT"),
+    ("sources", "watch_alert", "INTEGER NOT NULL DEFAULT 0"),
+    ("sources", "last_change_at", "TEXT"),
+    ("sources", "archive_url", "TEXT"),
 ]
 
 

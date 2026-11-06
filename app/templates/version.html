@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Fassung {{ v.n }} · {{ s.title }}{% endblock %}
+{% block crumbs %}<a href="/">Recherchen</a><span>/</span><a href="/p/{{ project.id }}">{{ project.name }}</a><span>/</span><a href="/s/{{ s.id }}">{{ (s.title or 'Quelle')|truncate(40) }}</a><span>/</span><b>Fassung {{ v.n }}</b>{% endblock %}
+{% block content %}
+<article class="version-page">
+  <header class="doc-head">
+    <span class="kind-badge">Fassung {{ v.n }} von {{ total }} · {{ REASONS[v.reason] }}</span>
+    <h1>{{ s.title or s.url }}</h1>
+    <div class="meta">
+      <span>abgerufen {{ v.fetched_at|hdatetime }}</span>
+      {% if v.http_status %}<span>HTTP {{ v.http_status }}</span>{% endif %}
+      {% if v.final_url and v.final_url != s.url %}<span>→ {{ v.final_url }}</span>{% endif %}
+    </div>
+    <nav class="ver-nav">
+      {% if v.n > 1 %}<a class="btn small ghost" href="/s/{{ s.id }}/v/{{ v.n - 1 }}">← Fassung {{ v.n - 1 }}</a>{% endif %}
+      {% if v.n < total %}<a class="btn small ghost" href="/s/{{ s.id }}/v/{{ v.n + 1 }}">Fassung {{ v.n + 1 }} →</a>{% endif %}
+      <a class="btn small ghost" href="/s/{{ s.id }}">Zur Quelle</a>
+    </nav>
+  </header>
+
+  <section class="proof-box">
+    <div>
+      <h3>Nachweis</h3>
+      {% if v.tsa_time %}
+      <p class="tsa ok">✓ Unabhängiger Zeitstempel: {{ describe_tsa(v) }}</p>
+      {% elif v.manifest_sha256 %}
+      <p class="tsa missing">Ohne unabhängigen Zeitstempel{% if v.tsa_error %} – <small>{{ v.tsa_error|truncate(160) }}</small>{% endif %}</p>
+      <form method="post" action="/s/{{ s.id }}/v/{{ v.n }}/seal"><button class="btn small">Zeitstempel erneut anfordern</button></form>
+      {% endif %}
+      {% if v.manifest_sha256 %}<p class="hint">Manifest SHA-256 <code class="hash">{{ v.manifest_sha256 }}</code></p>{% endif %}
+      {% if v.note %}<p class="hint">{{ v.note }}</p>{% endif %}
+      {% if arts %}<a class="btn primary" href="/s/{{ s.id }}/v/{{ v.n }}/nachweis.zip">Nachweis herunterladen (ZIP)</a>{% endif %}
+    </div>
+    {% if arts %}
+    <ul class="arts big">
+      {% for a in arts %}
+      <li>
+        <a href="/a/{{ a.id }}" target="_blank">{{ ARTIFACT_LABELS.get(a.kind, a.kind) }}</a>
+        <small>{{ a.size|filesize }}</small>
+        <code class="hash" title="SHA-256">{{ a.sha256[:16] }}…</code>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  {% for a in arts if a.kind == 'screenshot' %}
+  <details class="shot"><summary>Screenshot anzeigen</summary><a href="/a/{{ a.id }}" target="_blank"><img src="/a/{{ a.id }}" alt="Screenshot Fassung {{ v.n }}" loading="lazy"></a></details>
+  {% endfor %}
+
+  {% if v.reason == 'gelöscht' %}
+  <p class="notice error">Beim Abruf am {{ v.fetched_at|hdatetime }} lieferte die Seite HTTP {{ v.http_status }} – sie ist nicht mehr verfügbar. Die früheren Fassungen bleiben erhalten.</p>
+  {% elif prev %}
+  <h2 class="diff-title">Unterschiede zu Fassung {{ prev.n }} <small>({{ prev.fetched_at|hdatetime }})</small></h2>
+  {% if stats and not (stats.added or stats.removed or stats.changed) %}
+  <p class="hint">Kein Unterschied im Text. (Neu gesichert ohne inhaltliche Änderung – Layout, Bilder oder Werbung können sich trotzdem unterscheiden.)</p>
+  {% else %}
+  <p class="hint diff-stats">{{ stats.changed }} geändert · {{ stats.added }} hinzugekommen · {{ stats.removed }} entfernt (Absätze)</p>
+  <div class="diff">
+    {% for b in blocks %}
+    {% if b.type == 'skip' %}<p class="d-skip">… {{ b.count }} unveränderte{{ 'r' if b.count == 1 }} Absatz{{ 'e' if b.count != 1 }} …</p>
+    {% else %}<p class="d-{{ b.type }}">{{ b.html|safe }}</p>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% elif v.text %}
+  <h2 class="diff-title">Gesicherter Text</h2>
+  <div class="reader">{% for para in v.text.split('\n') if para.strip() %}<p class="txt">{{ para }}</p>{% endfor %}</div>
+  {% endif %}
+</article>
+{% endblock %}

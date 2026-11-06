@@ -4,7 +4,7 @@ from __future__ import annotations
 import mimetypes
 from pathlib import Path
 
-from .. import config, repo
+from .. import config, evidence, repo
 from ..db import connection
 from ..jobs import JobContext
 from ..util import normalize_date, sha256_file
@@ -81,6 +81,10 @@ def ingest_file(source_id: int, job: JobContext):
         src = repo.get_source(conn, source_id)
     path = config.FILES_DIR / src["snapshot_path"]
     fields: dict = {"content_hash": sha256_file(path)}
+    with connection() as conn:
+        vid, _, _ = evidence.create_version(conn, source_id, "erstsicherung", title=src["title"])
+        evidence.add_artifact(conn, source_id, vid, "original", path, src["mime_type"])
+    seal = ("seal", {"version_id": vid})
     if src["kind"] in ("audio", "video"):
         from .media import probe_duration
 
@@ -88,7 +92,7 @@ def ingest_file(source_id: int, job: JobContext):
         fields["duration"] = probe_duration(path)
         with connection() as conn:
             repo.update_source(conn, source_id, **fields)
-        return ("transcribe", job.options)
+        return [seal, ("transcribe", job.options)]
     if src["kind"] == "document":
         info = extract_file(path, src["mime_type"])
         fields["text"] = info.get("text", "")
@@ -97,4 +101,4 @@ def ingest_file(source_id: int, job: JobContext):
                 fields[key] = info[key]
     with connection() as conn:
         repo.update_source(conn, source_id, **fields)
-    return None
+    return [seal]

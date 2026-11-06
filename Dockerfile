@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PYTHONUNBUFFERED=1 \
     FUNDUS_DATA_DIR=/data
 
@@ -10,7 +11,10 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Python-Pakete + Chromium für Screenshot/PDF (inkl. Schriften und Systembibliotheken)
+RUN pip install --no-cache-dir -r requirements.txt \
+ && playwright install --with-deps chromium \
+ && rm -rf /var/lib/apt/lists/*
 COPY app ./app
 
 VOLUME ["/data"]
