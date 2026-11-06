@@ -56,6 +56,12 @@
     span.textContent = Array.from(inp.files).map((f) => f.name).join(", ") || span.textContent;
   }));
 
+  // Datum eintragen wählt automatisch die zugehörige Option („ab …“)
+  $$("input.date").forEach((inp) => inp.addEventListener("input", () => {
+    const radio = inp.closest("label") && inp.closest("label").querySelector("input[type=radio]");
+    if (radio) radio.checked = true;
+  }));
+
   // Liste aktualisieren, solange etwas verarbeitet wird
   const auto = $("[data-autorefresh]");
   if (auto) setTimeout(() => reloadKeepingScroll(), Number(auto.dataset.autorefresh) * 1000);

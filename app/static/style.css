@@ -480,3 +480,14 @@ mark.hl.active { outline: 2px solid var(--ink); outline-offset: 1px; }
 .howto summary { cursor: pointer; font-weight: 600; }
 .howto li { margin: 6px 0; }
 @media (max-width: 640px) { .account { grid-template-columns: 1fr; } .settings-link { display: none; } }
+
+.history { margin-top: 4px; }
+.history .row { gap: 6px 16px; align-items: center; }
+.history .row > span { font-size: 13.5px; color: var(--ink-2); }
+input.date { width: auto; padding: 4px 6px; font-size: 13.5px; }
+.menu-body .indent { padding-left: 24px; gap: 6px 14px; }
+.hint.warn { color: var(--warn); }
+.menu-body .check { flex: 0 0 auto; }
+.history .check, .menu-body .row .check { flex: 0 0 auto; }
+.menu-body form > label.check { display: flex; width: 100%; }
+.menu-body form > p { margin: 0; }

@@ -79,6 +79,8 @@ Jede Sicherung einer Quelle wird als **Fassung** abgelegt (`files/<quelle>/v1`, 
 
 Im Projekt unter **Beobachtete Accounts** einen Account eintragen und wählen, was gesichert werden soll: Stories, Highlights (Instagram) und/oder neue Beiträge. Fundus fragt im gewählten Intervall nach (Standard alle 3 Stunden, mit ±20 % Zufall) – Stories sind 24 Stunden sichtbar, so geht nichts verloren.
 
+**Beim Hinzufügen** werden alle aktuell sichtbaren Stories sofort gesichert. Optional lassen sich dabei auch **bisherige Beiträge** laden – alle oder ab einem Datum – sowie alle Highlights. Dasselbe geht jederzeit später über **„Archiv nachladen“** am Account. Fundus blättert dabei nur so weit zurück wie nötig (angeheftete Beiträge werden übersprungen) und setzt nach einem Abbruch dort fort, wo es aufgehört hat. Bei großen Profilen kann das Stunden dauern; ein Startdatum ist schonender für das Recherche-Konto.
+
 Jeder neue Inhalt wird eine eigene Quelle mit Datum, Bildunterschrift, Prüfsumme und Zeitstempel; Videos werden transkribiert. Getaggt wird mit `Story`/`Highlight`/`Beitrag` und `@account`. Doppelte Inhalte werden nie erneut geladen.
 
 **Voraussetzung:** Unter **Einstellungen** die Cookies eines eigenen Recherche-Kontos hochladen (Anleitung dort). Nie das private Konto verwenden – automatisierte Abrufe verstoßen gegen die Nutzungsbedingungen der Plattformen und können zur Sperrung führen. Läuft die Anmeldung ab, zeigt Fundus das an und schickt eine Benachrichtigung.

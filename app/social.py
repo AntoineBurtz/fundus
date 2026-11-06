@@ -102,8 +102,16 @@ def list_accounts(conn: sqlite3.Connection, project_id: int) -> list[sqlite3.Row
                   (SELECT COUNT(*) FROM sources s WHERE s.account_id = a.id) AS sources,
                   (SELECT MAX(s.published_at) FROM sources s WHERE s.account_id = a.id) AS last_item,
                   (SELECT status FROM jobs j WHERE j.type = 'account'
-                     AND j.options LIKE '%"account_id": ' || a.id || '}%'
-                     AND j.status IN ('queued','running') LIMIT 1) AS job_status
+                     AND json_extract(j.options, '$.account_id') = a.id
+                     AND j.status IN ('queued','running')
+                     ORDER BY (j.status = 'running') DESC LIMIT 1) AS job_status,
+                  (SELECT note FROM jobs j WHERE j.type = 'account'
+                     AND json_extract(j.options, '$.account_id') = a.id
+                     AND j.status = 'running' LIMIT 1) AS job_note,
+                  (SELECT COUNT(*) FROM jobs j WHERE j.type = 'account'
+                     AND json_extract(j.options, '$.account_id') = a.id
+                     AND json_extract(j.options, '$.backfill') IS NOT NULL
+                     AND j.status IN ('queued','running')) AS backfill_pending
            FROM watched_accounts a WHERE a.project_id = ? ORDER BY a.platform, a.handle""",
         (project_id,),
     ).fetchall()
@@ -132,6 +140,27 @@ def enqueue_check(conn: sqlite3.Connection, account_id: int) -> int | None:
         return None
     return conn.execute(
         "INSERT INTO jobs(source_id, type, options) VALUES (NULL, 'account', ?)", (_opts(account_id),)
+    ).lastrowid
+
+
+def enqueue_backfill(conn: sqlite3.Connection, account_id: int, *, stories: bool = False,
+                     highlights: bool = False, posts: bool = False,
+                     since: str | None = None) -> int:
+    """Einmaliger Archiv-Auftrag: aktuelle Stories, Highlights und/oder bisherige Beiträge.
+
+    since = "JJJJ-MM-TT" lädt Beiträge ab diesem Tag, None = alle.
+    """
+    import json
+
+    if not (stories or highlights or posts):
+        raise ValueError("Bitte auswählen, was nachgeladen werden soll")
+    if since:
+        since = datetime.fromisoformat(since).strftime("%Y-%m-%d")
+    opts = {"account_id": account_id,
+            "backfill": {"stories": bool(stories), "highlights": bool(highlights),
+                         "posts": bool(posts), "since": since}}
+    return conn.execute(
+        "INSERT INTO jobs(source_id, type, options) VALUES (NULL, 'account', ?)", (json.dumps(opts),)
     ).lastrowid
 
 

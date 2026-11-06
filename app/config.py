@@ -61,6 +61,8 @@ BASE_URL = _env("FUNDUS_BASE_URL", "").rstrip("/")
 # Optional: User-Agent des Browsers, aus dem die Cookies stammen (verringert Rückfragen)
 SOCIAL_USER_AGENT = _env("FUNDUS_SOCIAL_USER_AGENT", "")
 SOCIAL_TIMEOUT = int(_env("FUNDUS_SOCIAL_TIMEOUT", "1200"))
+# Archiv nachladen (alle bisherigen Beiträge) kann wegen Wartezeiten Stunden dauern
+SOCIAL_BACKFILL_TIMEOUT = int(_env("FUNDUS_SOCIAL_BACKFILL_TIMEOUT", "21600"))
 
 # Videos zusätzlich zum Ton behalten (braucht deutlich mehr Platz)
 KEEP_VIDEO = _env("FUNDUS_KEEP_VIDEO", "0") == "1"
