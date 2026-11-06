@@ -54,7 +54,8 @@ def list_projects(conn: sqlite3.Connection, include_archived: bool = False) -> l
                (SELECT COUNT(*) FROM sources s WHERE s.project_id = p.id) AS source_count,
                (SELECT COUNT(*) FROM highlights h JOIN sources s ON s.id = h.source_id
                  WHERE s.project_id = p.id) AS highlight_count,
-               (SELECT MAX(s.captured_at) FROM sources s WHERE s.project_id = p.id) AS last_activity
+               (SELECT MAX(s.captured_at) FROM sources s WHERE s.project_id = p.id) AS last_activity,
+               (SELECT COUNT(*) FROM sources s WHERE s.project_id = p.id AND s.watch_alert = 1) AS alert_count
         FROM projects p
         {'' if include_archived else 'WHERE p.archived = 0'}
         ORDER BY COALESCE(last_activity, p.created_at) DESC
@@ -162,6 +163,7 @@ def list_sources(
         SELECT s.id, s.project_id, s.kind, s.title, s.url, s.author, s.site_name,
                s.published_at, s.captured_at, s.event_date, s.event_date_end, s.status,
                s.credibility, s.state, s.error, s.duration,
+               s.watch_hours, s.watch_status, s.watch_alert,
                substr(s.description, 1, 300) AS description,
                (SELECT COUNT(*) FROM highlights h WHERE h.source_id = s.id) AS highlight_count
         FROM sources s

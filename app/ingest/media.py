@@ -5,7 +5,7 @@ import logging
 import mimetypes
 from pathlib import Path
 
-from .. import config, repo
+from .. import config, evidence, repo
 from ..db import connection
 from ..jobs import JobContext
 from ..util import normalize_date, sha256_file
@@ -118,12 +118,18 @@ def ingest_media(source_id: int, job: JobContext):
                 pass
     with connection() as conn:
         repo.update_source(conn, source_id, **fields)
+        # Download als Fassung festhalten (Prüfsumme + Zeitstempel)
+        vid, _, _ = evidence.create_version(
+            conn, source_id, "erstsicherung", final_url=info.get("webpage_url") or src["url"],
+            title=fields.get("title") or src["title"])
+        evidence.add_artifact(conn, source_id, vid, "media", media, fields["mime_type"])
+        seal = ("seal", {"version_id": vid})
         if _usable(subtitle_segments):
             lang = subtitle_origin.rsplit("(", 1)[-1].rstrip(")") if subtitle_origin else ""
             repo.set_transcript(conn, source_id, subtitle_segments,
                                 language=lang.split("-")[0], origin=subtitle_origin)
-            return None
-    return ("transcribe", job.options)
+            return [seal]
+    return [seal, ("transcribe", job.options)]
 
 
 def _usable(segments: list[dict]) -> bool:

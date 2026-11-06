@@ -152,7 +152,7 @@ def test_media_uses_subtitles_and_skips_whisper(client, fake_ytdlp, monkeypatch)
     monkeypatch.setattr(tr, "_get_model", lambda name: pytest.fail("Whisper darf nicht laufen"))
     pid = _project(client)
     client.post(f"/p/{pid}/sources/url", data={"url": "https://youtube.com/watch?v=1"})
-    assert worker.drain() == 1
+    assert worker.drain() == 2  # media → seal
     with connection() as conn:
         s = conn.execute("SELECT * FROM sources").fetchone()
         assert s["state"] == "bereit", s["error"]
@@ -188,14 +188,16 @@ def test_subtitles_off_runs_whisper_with_chosen_model(client, fake_ytdlp, monkey
     pid = _project(client)
     client.post(f"/p/{pid}/sources/url", data={
         "url": "https://youtube.com/watch?v=2", "options_shown": "1", "whisper_model": "base"})
-    assert worker.drain() == 2
+    assert worker.drain() == 3
     with connection() as conn:
         s = conn.execute("SELECT * FROM sources").fetchone()
         jobs = conn.execute("SELECT type, options, status FROM jobs ORDER BY id").fetchall()
+        art = conn.execute("SELECT kind, path FROM artifacts").fetchone()
     assert used == ["base"]
     assert s["transcript_origin"] == "Whisper base" and s["state"] == "bereit"
-    assert [j["type"] for j in jobs] == ["media", "transcribe"]
-    assert '"subtitles": "off"' in jobs[1]["options"]
+    assert [j["type"] for j in jobs] == ["media", "seal", "transcribe"]
+    assert '"subtitles": "off"' in jobs[2]["options"]
+    assert art["kind"] == "media" and art["path"].endswith("media.m4a")
 
 
 def test_progress_and_cancel(client, monkeypatch):

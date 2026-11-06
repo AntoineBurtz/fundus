@@ -13,6 +13,10 @@ def app_env(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "FILES_DIR", tmp_path / "files")
     monkeypatch.setattr(config, "RUN_WORKER", False)
     monkeypatch.setattr(config, "AUTH_PASSWORD", "")
+    # Kein Netz und kein Browser in Tests – einzelne Tests schalten das gezielt ein
+    monkeypatch.setattr(config, "TSA_URLS", [])
+    monkeypatch.setattr(config, "CAPTURE", False)
+    monkeypatch.setattr(config, "NOTIFY_URL", "")
     from app import db
 
     db.init()

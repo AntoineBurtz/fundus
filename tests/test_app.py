@@ -44,9 +44,13 @@ def test_web_ingest_flow(client, monkeypatch):
     r = client.post(f"/p/{pid}/sources/url", data={"url": "example.org/lech", "tags": "Presse"},
                     follow_redirects=False)
     assert r.status_code == 303
-    assert worker.drain() == 1
+    assert worker.drain() == 3  # web → capture → seal
     with connection() as conn:
         s = conn.execute("SELECT * FROM sources").fetchone()
+        v = conn.execute("SELECT * FROM versions").fetchone()
+        arts = conn.execute("SELECT kind FROM artifacts").fetchall()
+    assert v["n"] == 1 and v["reason"] == "erstsicherung" and v["http_status"] == 200
+    assert v["manifest_sha256"] and [a["kind"] for a in arts] == ["html"]
     assert s["state"] == "bereit", s["error"]
     assert s["url"] == "https://example.org/lech"
     assert s["title"] == "Streit um Wasserrechte am Lech"
@@ -124,7 +128,7 @@ def test_upload_text_and_audio_transcription(client, monkeypatch):
     monkeypatch.setattr(tr, "_get_model", lambda name: FakeModel())
     client.post(f"/p/{pid}/sources/upload",
                 files={"files": ("interview.mp3", io.BytesIO(b"ID3fake"), "audio/mpeg")})
-    assert worker.drain() == 2  # file → transcribe
+    assert worker.drain() == 3  # file → seal + transcribe
     with connection() as conn:
         a = conn.execute("SELECT * FROM sources WHERE title = 'interview'").fetchone()
         assert a["state"] == "bereit", a["error"]

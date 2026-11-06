@@ -6,10 +6,11 @@ Recherchen · Webseiten sichern · Video/Podcast laden + Whisper-Transkription �
 ## ✅ Phase 1.1 – Transkription auf CPU
 Vorhandene Untertitel nutzen (VTT/SRT/TTML) · Whisper-Modell je Quelle · Fortschritt + Restzeit · Abbrechen · eigene Warteschlange für Transkriptionen · CPU-Threads begrenzen
 
-## Phase 2 – Beweissicherung & Erfassung
-- [ ] Screenshot + PDF der Seite (headless Chromium) zusätzlich zum HTML
-- [ ] Optional automatisch bei archive.org sichern, Archiv-Link speichern
-- [ ] Änderungsüberwachung: Seiten regelmäßig neu abrufen, Versionen + Diff, Hinweis bei Änderung/Löschung
+## ✅ Phase 2a – Beweissicherung
+Fassungen mit Screenshot, PDF, gerenderter Seite · SHA-256-Manifest · unabhängiger RFC-3161-Zeitstempel · Nachweis-ZIP mit Prüfanleitung · Änderungsüberwachung mit Vorher-nachher-Vergleich · Hinweis bei Löschung · ntfy/Home-Assistant-Benachrichtigung · archive.org auf Knopfdruck
+
+## Phase 2b – Erfassung
+- [ ] Sicherungsnachweis zusätzlich als PDF-Bericht (für Redaktion/Anwalt)
 - [ ] Seiten hinter Paywall/Login: Übernahme aus Browser-Erweiterung (HTML direkt aus dem eingeloggten Tab senden)
 - [ ] Podcast-RSS und YouTube-Kanäle abonnieren → neue Folgen automatisch holen
 - [ ] OCR für Scans und Bilder (Tesseract / ocrmypdf)
