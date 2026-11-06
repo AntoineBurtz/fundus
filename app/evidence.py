@@ -21,6 +21,7 @@ ARTIFACT_LABELS = {
     "pdf": "PDF",
     "media": "Mediendatei",
     "original": "Originaldatei",
+    "metadata": "Metadaten (JSON)",
 }
 REASONS = {
     "erstsicherung": "Erstsicherung",

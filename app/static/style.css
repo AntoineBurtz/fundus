@@ -275,7 +275,8 @@ input.big { font-size: 17px; padding: 12px 14px; }
 .player audio { width: 100%; display: block; }
 .follow { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin-top: 6px; }
 .follow input { width: auto; }
-.image img { max-width: 100%; border-radius: 10px; border: 1px solid var(--line); }
+.image img { max-width: 100%; max-height: 80vh; border-radius: 10px; border: 1px solid var(--line); }
+.caption { font: 18px/1.55 var(--serif); margin: 16px 0; padding-left: 12px; border-left: 3px solid var(--line-2); white-space: pre-line; }
 
 .reader { font: 18.5px/1.68 var(--serif); color: var(--ink); margin-top: 22px; }
 .reader .blk { position: relative; }
@@ -450,3 +451,32 @@ mark.hl.active { outline: 2px solid var(--ink); outline-offset: 1px; }
 .diff del { background: #f6c9c0; border-radius: 2px; }
 .diff .d-skip { color: var(--muted); font: 13px var(--sans); text-align: center; }
 @media (max-width: 640px) { .proof-box { grid-template-columns: 1fr; } }
+
+/* ------------------------------------------------ Accounts & Einstellungen */
+.settings-link { color: var(--muted); text-decoration: none; font-size: 14px; white-space: nowrap; }
+.settings-link:hover { color: var(--ink); }
+.account-add { margin-bottom: 22px; }
+.account-add .row > input { flex: 2 1 220px; }
+.account-add select { flex: 0 1 auto; width: auto; }
+.checks { gap: 6px 18px; }
+.checks .check { flex: 0 0 auto; }
+.accounts { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.account { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 16px 4px; border-bottom: 1px solid var(--line); align-items: start; }
+.account.paused { opacity: .6; }
+.account h3 { margin: 2px 0 4px; font-size: 20px; }
+.account h3 a { text-decoration: none; }
+.account h3 a:hover { color: var(--accent); }
+.acc-status { font-size: 13px; color: var(--ink-2); margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.acc-status.bad { color: var(--bad); }
+.acc-actions { display: flex; gap: 6px; align-items: center; }
+.acc-actions form { display: inline; }
+.spinner.small { width: 11px; height: 11px; border-width: 2px; }
+.settings h1 { font-size: 34px; margin: 0 0 18px; }
+.settings h2 { font-size: 22px; margin: 26px 0 6px; }
+.settings .lede { margin-bottom: 16px; }
+.cookie-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.cookie-grid .row input[type=file] { flex: 1 1 180px; padding: 6px; }
+.howto { margin-top: 22px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+.howto summary { cursor: pointer; font-weight: 600; }
+.howto li { margin: 6px 0; }
+@media (max-width: 640px) { .account { grid-template-columns: 1fr; } .settings-link { display: none; } }

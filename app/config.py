@@ -57,6 +57,11 @@ NOTIFY_URL = _env("FUNDUS_NOTIFY_URL", "")
 # Öffentliche Adresse von Fundus für Links in Benachrichtigungen
 BASE_URL = _env("FUNDUS_BASE_URL", "").rstrip("/")
 
+# ---- Social-Media-Beobachtung (gallery-dl)
+# Optional: User-Agent des Browsers, aus dem die Cookies stammen (verringert Rückfragen)
+SOCIAL_USER_AGENT = _env("FUNDUS_SOCIAL_USER_AGENT", "")
+SOCIAL_TIMEOUT = int(_env("FUNDUS_SOCIAL_TIMEOUT", "1200"))
+
 # Videos zusätzlich zum Ton behalten (braucht deutlich mehr Platz)
 KEEP_VIDEO = _env("FUNDUS_KEEP_VIDEO", "0") == "1"
 

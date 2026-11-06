@@ -11,6 +11,7 @@ Selbst gehostete Plattform zum **Sammeln, Sichern, Einordnen und Darstellen** vo
 | **Beweissicherung** | Jede Sicherung ist eine *Fassung* mit SHA-256 aller Dateien, Manifest und unabhängigem Zeitstempel (RFC 3161). Nachweis-Paket als ZIP mit Prüfanleitung |
 | **Änderungsüberwachung** | Seiten alle 6 h / täglich / wöchentlich prüfen; neue Fassung bei Änderung, Vorher-nachher-Vergleich, Hinweis bei Löschung, optional Push-Nachricht |
 | **archive.org** | Auf Knopfdruck zusätzlich öffentlich bei der Wayback Machine sichern |
+| **Social-Media-Beobachtung** | Instagram- und TikTok-Accounts beobachten: neue Stories (auch Highlights/Beiträge) automatisch sichern, versiegeln und transkribieren |
 | **Videos & Podcasts** | Download per yt-dlp (YouTube, Mediatheken, ARD Audiothek, SoundCloud, direkte MP3/MP4 …). Vorhandene Untertitel werden direkt als Transkript übernommen, sonst lokale Transkription mit Whisper – jeweils mit Zeitstempeln |
 | **Transkription auf CPU** | Modell pro Quelle wählbar, Fortschritt mit Restzeit, Abbrechen, eigene Warteschlange (Webseiten warten nie hinter einem langen Podcast) |
 | **Dateien** | PDF, Word, Text, HTML, Audio, Video, Bilder hochladen |
@@ -74,6 +75,16 @@ Jede Sicherung einer Quelle wird als **Fassung** abgelegt (`files/<quelle>/v1`, 
 
 **archive.org:** Nur auf Knopfdruck. Achtung: Die Sicherung ist öffentlich einsehbar – bei vertraulichen Recherchen ggf. erst nach Veröffentlichung nutzen.
 
+## Stories beobachten (Instagram, TikTok)
+
+Im Projekt unter **Beobachtete Accounts** einen Account eintragen und wählen, was gesichert werden soll: Stories, Highlights (Instagram) und/oder neue Beiträge. Fundus fragt im gewählten Intervall nach (Standard alle 3 Stunden, mit ±20 % Zufall) – Stories sind 24 Stunden sichtbar, so geht nichts verloren.
+
+Jeder neue Inhalt wird eine eigene Quelle mit Datum, Bildunterschrift, Prüfsumme und Zeitstempel; Videos werden transkribiert. Getaggt wird mit `Story`/`Highlight`/`Beitrag` und `@account`. Doppelte Inhalte werden nie erneut geladen.
+
+**Voraussetzung:** Unter **Einstellungen** die Cookies eines eigenen Recherche-Kontos hochladen (Anleitung dort). Nie das private Konto verwenden – automatisierte Abrufe verstoßen gegen die Nutzungsbedingungen der Plattformen und können zur Sperrung führen. Läuft die Anmeldung ab, zeigt Fundus das an und schickt eine Benachrichtigung.
+
+Technik: [gallery-dl](https://github.com/mikf/gallery-dl). Instagram funktioniert in der Regel zuverlässig; die TikTok-Unterstützung von gallery-dl ist wechselhaft. Bei Problemen hilft oft ein Update des Images (gallery-dl wird bei jedem Build aktuell installiert).
+
 ## Einstellungen (Umgebungsvariablen)
 
 | Variable | Standard | Bedeutung |
@@ -91,6 +102,7 @@ Jede Sicherung einer Quelle wird als **Fassung** abgelegt (`files/<quelle>/v1`, 
 | `FUNDUS_TSA_URLS` | DigiCert, freetsa.org | Zeitstempeldienste (Komma-getrennt, der Reihe nach); leer = keine Zeitstempel |
 | `FUNDUS_NOTIFY_URL` | *(leer)* | ntfy-Topic oder JSON-Webhook für Änderungsmeldungen |
 | `FUNDUS_BASE_URL` | *(leer)* | Adresse von Fundus, z. B. `http://unraid:8000`, für Links in Meldungen |
+| `FUNDUS_SOCIAL_USER_AGENT` | *(leer)* | User-Agent des Browsers, aus dem die Social-Media-Cookies stammen |
 | `FUNDUS_USER` / `FUNDUS_PASSWORD` | `fundus` / *(leer)* | Einfacher Zugangsschutz; leer = aus |
 
 ## Transkription ohne Grafikkarte
@@ -114,7 +126,8 @@ app/
   evidence.py      Fassungen, Manifest, Nachweis-Paket
   tsa.py           RFC-3161-Zeitstempel
   diff.py          Vergleich zweier Fassungen
-  ingest/          web.py · media.py · transcribe.py · files.py · capture.py · watch.py
+  social.py        Beobachtete Accounts, Cookies der Recherche-Konten
+  ingest/          web.py · media.py · transcribe.py · files.py · capture.py · watch.py · accounts.py
   templates/       Jinja2-Vorlagen
   static/          CSS + JS (kein Build-Schritt)
 tests/

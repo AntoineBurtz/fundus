@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Accounts · {{ project.name }}{% endblock %}
+{% block crumbs %}<a href="/">Recherchen</a><span>/</span><a href="/p/{{ project.id }}">{{ project.name }}</a><span>/</span><b>Beobachtete Accounts</b>{% endblock %}
+{% block content %}
+{% include "_project_head.html" %}
+
+{% set missing = [] %}
+{% for p, label in PLATFORMS.items() if not cookies[p].present %}{% set _ = missing.append(label) %}{% endfor %}
+{% if missing %}
+<div class="notice muted">
+  Für {{ missing|join(' und ') }} sind noch keine Cookies eines Recherche-Kontos hinterlegt – ohne Anmeldung gibt es keine Stories.
+  <a class="btn small" href="/einstellungen">Einrichten</a>
+</div>
+{% endif %}
+
+<form class="panel account-add" method="post" action="/p/{{ project.id }}/accounts">
+  <h3>Account beobachten</h3>
+  <div class="row">
+    <select name="platform" id="platform" aria-label="Plattform">
+      {% for p, label in PLATFORMS.items() %}<option value="{{ p }}">{{ label }}</option>{% endfor %}
+    </select>
+    <input name="handle" required placeholder="@name oder Profil-URL">
+    <select name="interval_hours" aria-label="Intervall">
+      {% for h, label in INTERVALS.items() %}<option value="{{ h }}" {{ 'selected' if h == 3 }}>{{ label }}</option>{% endfor %}
+    </select>
+    <button class="btn primary">Beobachten</button>
+  </div>
+  <div class="row checks">
+    <label class="check"><input type="checkbox" name="stories" value="1" checked> Stories</label>
+    <label class="check" data-only="instagram"><input type="checkbox" name="highlights" value="1"> Highlights (auch ältere)</label>
+    <label class="check"><input type="checkbox" name="posts" value="1"> Beiträge/Videos ab heute</label>
+    <label class="check"><input type="checkbox" name="transcribe" value="1" checked> Videos transkribieren</label>
+  </div>
+  <p class="hint">Stories sind 24 Stunden sichtbar – alle 2–3 Stunden nachzusehen verpasst nichts und fällt weniger auf als häufige Abrufe. Die Zeitpunkte schwanken bewusst um ±20 %.</p>
+</form>
+
+<ul class="accounts" {% if busy %}data-autorefresh="6"{% endif %}>
+  {% for a in accounts %}
+  <li class="account {{ 'paused' if not a.active }}">
+    <div class="acc-main">
+      <span class="kind-badge">{{ PLATFORMS[a.platform] }}</span>
+      <h3><a href="{{ 'https://www.instagram.com/' ~ a.handle ~ '/' if a.platform == 'instagram' else 'https://www.tiktok.com/@' ~ a.handle }}" target="_blank" rel="noopener noreferrer">@{{ a.handle }}</a></h3>
+      <div class="meta">
+        <span>{{ [a.stories and 'Stories', a.highlights and 'Highlights', a.posts and ('Beiträge' if a.platform == 'instagram' else 'Videos')]|select|join(', ') }}</span>
+        <span>{{ INTERVALS.get(a.interval_hours|int, a.interval_hours ~ ' h') }}</span>
+        <span><a href="/p/{{ project.id }}?tag={{ ('@' ~ a.handle)|urlencode }}">{{ a.sources }} gesichert</a></span>
+        {% if a.last_item %}<span>zuletzt {{ a.last_item|hdate }}</span>{% endif %}
+      </div>
+      <div class="acc-status {{ 'bad' if a.last_error else '' }}">
+        {% if a.job_status == 'running' %}<span class="spinner small"></span> Wird gerade abgerufen …
+        {% elif a.job_status == 'queued' %}In der Warteschlange …
+        {% elif a.last_check_at %}Letzte Prüfung {{ a.last_check_at|hdatetime }}: {{ a.last_status }}
+        {% else %}Noch nicht geprüft{% endif %}
+        {% if a.active and a.next_check_at and not a.job_status %} · nächste ca. {{ a.next_check_at|hdatetime }}{% endif %}
+        {% if not a.active %} · <b>pausiert</b>{% endif %}
+      </div>
+    </div>
+    <div class="acc-actions">
+      <form method="post" action="/accounts/{{ a.id }}/check"><button class="btn small" {{ 'disabled' if a.job_status }}>Jetzt prüfen</button></form>
+      <form method="post" action="/accounts/{{ a.id }}/pause"><button class="btn small ghost">{{ 'Fortsetzen' if not a.active else 'Pausieren' }}</button></form>
+      <details class="menu">
+        <summary class="btn small ghost">Ändern</summary>
+        <div class="menu-body">
+          <form method="post" action="/accounts/{{ a.id }}/edit">
+            <label class="check"><input type="checkbox" name="stories" value="1" {{ 'checked' if a.stories }}> Stories</label>
+            {% if a.platform == 'instagram' %}<label class="check"><input type="checkbox" name="highlights" value="1" {{ 'checked' if a.highlights }}> Highlights</label>{% endif %}
+            <label class="check"><input type="checkbox" name="posts" value="1" {{ 'checked' if a.posts }}> Beiträge/Videos</label>
+            <label class="check"><input type="checkbox" name="transcribe" value="1" {{ 'checked' if a.transcribe }}> Videos transkribieren</label>
+            <label>Intervall
+              <select name="interval_hours">{% for h, label in INTERVALS.items() %}<option value="{{ h }}" {{ 'selected' if a.interval_hours|int == h }}>{{ label }}</option>{% endfor %}</select>
+            </label>
+            <button class="btn">Speichern</button>
+          </form>
+          <form method="post" action="/accounts/{{ a.id }}/delete" class="danger-zone" onsubmit="return confirm('Beobachtung beenden? Bereits gesicherte Inhalte bleiben erhalten.')">
+            <button class="btn danger">Beobachtung beenden</button>
+          </form>
+        </div>
+      </details>
+    </div>
+  </li>
+  {% else %}
+  <li class="empty">Noch keine Accounts. Oben einen Instagram- oder TikTok-Account eintragen.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
+{% block scripts %}
+<script>
+  const pf = document.getElementById('platform');
+  const sync = () => document.querySelectorAll('[data-only]').forEach(el => {
+    const on = el.dataset.only === pf.value;
+    el.hidden = !on; if (!on) el.querySelector('input').checked = false;
+  });
+  pf.addEventListener('change', sync); sync();
+</script>
+{% endblock %}

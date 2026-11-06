@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen{% endblock %}
+{% block crumbs %}<a href="/">Recherchen</a><span>/</span><b>Einstellungen</b>{% endblock %}
+{% block content %}
+<section class="settings">
+  <h1>Einstellungen</h1>
+
+  <h2>Recherche-Konten für Social Media</h2>
+  <p class="lede">Stories gibt es nur mit Anmeldung. Fundus nutzt dafür die Cookies eines <b>eigenen Recherche-Kontos</b> – nie deines privaten Kontos, denn automatisierte Abrufe können zur Sperrung führen.</p>
+
+  <div class="cookie-grid">
+    {% for p, label in PLATFORMS.items() %}
+    {% set c = cookies[p] %}
+    <div class="panel">
+      <h3>{{ label }}</h3>
+      {% if c.present %}
+      <p class="{{ 'tsa ok' if c.session else 'tsa missing' }}">
+        {{ '✓ Anmelde-Cookie vorhanden' if c.session else 'Kein Anmelde-Cookie (sessionid) – Konto war beim Export vermutlich nicht eingeloggt' }}
+      </p>
+      <p class="hint">Hochgeladen {{ c.updated|hdatetime }}{% if c.expires %} · läuft ab {{ c.expires|hdatetime }}{% endif %}</p>
+      {% else %}
+      <p class="hint">Noch keine Cookies hinterlegt.</p>
+      {% endif %}
+      <form method="post" action="/einstellungen/cookies/{{ p }}" enctype="multipart/form-data" class="row">
+        <input type="file" name="file" accept=".txt,text/plain" required>
+        <button class="btn primary">{{ 'Ersetzen' if c.present else 'Hochladen' }}</button>
+      </form>
+      {% if c.present %}
+      <form method="post" action="/einstellungen/cookies/{{ p }}/delete"><button class="linkish">Cookies löschen</button></form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <details class="howto" open>
+    <summary>So richtest du ein Recherche-Konto ein</summary>
+    <ol>
+      <li><b>Konto anlegen</b> mit eigener E-Mail-Adresse (und am besten eigener Telefonnummer). Profilbild und ein paar Angaben ergänzen – leere Konten fallen auf.</li>
+      <li><b>Einige Tage normal nutzen</b>, idealerweise am Handy: ein paar Accounts folgen, Beiträge und Stories ansehen. Neue Konten, die sofort automatisiert abrufen, werden häufiger gesperrt.</li>
+      <li><b>Zwei-Faktor-Anmeldung</b> einschalten, damit das Konto nicht übernommen werden kann.</li>
+      <li>Im Browser am PC mit dem Recherche-Konto <b>einloggen</b> (am besten in einem eigenen Browser-Profil) und ein paar Stories ansehen.</li>
+      <li>Mit der Erweiterung <b>„Get cookies.txt LOCALLY“</b> (Chrome/Firefox) auf instagram.com bzw. tiktok.com die Cookies als <code>cookies.txt</code> exportieren und oben hochladen.</li>
+      <li>Im Browser danach <b>nicht ausloggen</b> – sonst werden die Cookies ungültig. Läuft die Anmeldung ab, zeigt Fundus „Anmeldung abgelaufen“ und schickt eine Benachrichtigung; dann einfach neu exportieren.</li>
+    </ol>
+    <p class="hint">Optional: Den User-Agent dieses Browsers als <code>FUNDUS_SOCIAL_USER_AGENT</code> eintragen – passt er zu den Cookies, gibt es weniger Sicherheitsabfragen.
+      {% if cfg.SOCIAL_USER_AGENT %}Aktuell gesetzt.{% else %}Aktuell nicht gesetzt.{% endif %}</p>
+    <p class="hint">Ob ein Abruf in der „Gesehen von“-Liste einer Story auftaucht, ist nicht garantiert ausgeschlossen. Vor heiklen Recherchen mit einem eigenen Testkonto prüfen.</p>
+  </details>
+</section>
+{% endblock %}

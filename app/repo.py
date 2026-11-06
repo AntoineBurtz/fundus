@@ -31,6 +31,7 @@ SOURCE_EDITABLE = {
     "published_at", "event_date", "event_date_end", "status", "credibility",
     "notes", "text", "content_hash", "snapshot_path", "media_path",
     "mime_type", "duration", "state", "error", "kind", "transcript_origin",
+    "external_id", "account_id",
 }
 DATE_FIELDS = {"published_at", "event_date", "event_date_end"}
 
@@ -525,6 +526,14 @@ def search(
 # Transkriptionen sind langsam (CPU) und laufen deshalb in einer eigenen Spur,
 # damit Webseiten und Downloads nicht stundenlang warten müssen.
 HEAVY_JOBS = ("transcribe",)
+# Social-Media-Abrufe warten absichtlich zwischen Anfragen und laufen deshalb
+# ebenfalls in einer eigenen Spur.
+SOCIAL_JOBS = ("account",)
+LANES = {
+    "schnell": ("NOT IN", HEAVY_JOBS + SOCIAL_JOBS),
+    "langsam": ("IN", HEAVY_JOBS),
+    "social": ("IN", SOCIAL_JOBS),
+}
 
 
 def enqueue_job(
@@ -538,18 +547,19 @@ def enqueue_job(
 
 
 def claim_next_job(
-    conn: sqlite3.Connection, heavy: bool | None = None
+    conn: sqlite3.Connection, heavy: bool | str | None = None
 ) -> sqlite3.Row | None:
-    """Nächsten Job holen. heavy=True nur Transkriptionen, False alles andere, None beides."""
+    """Nächsten Job holen – aus einer Spur ("schnell", "langsam", "social") oder allen (None).
+
+    heavy=True/False ist die ältere Schreibweise für "langsam"/"schnell".
+    """
+    lane = {True: "langsam", False: "schnell"}.get(heavy, heavy) if isinstance(heavy, bool) else heavy
     where = "status = 'queued'"
-    ph = ",".join("?" * len(HEAVY_JOBS))
     args: list[Any] = []
-    if heavy is True:
-        where += f" AND type IN ({ph})"
-        args += HEAVY_JOBS
-    elif heavy is False:
-        where += f" AND type NOT IN ({ph})"
-        args += HEAVY_JOBS
+    if lane:
+        op, types = LANES[lane]
+        where += f" AND type {op} ({','.join('?' * len(types))})"
+        args += types
     row = conn.execute(f"SELECT * FROM jobs WHERE {where} ORDER BY id LIMIT 1", args).fetchone()
     if row is None:
         return None
@@ -591,6 +601,8 @@ def request_cancel(conn: sqlite3.Connection, source_id: int) -> None:
 
 def _refresh_source_state(conn: sqlite3.Connection, source_id: int, error: str | None = None,
                           cancelled: bool = False) -> None:
+    if source_id is None:
+        return
     counts = {r["status"]: r["n"] for r in conn.execute(
         """SELECT status, COUNT(*) AS n FROM jobs WHERE source_id = ?
            AND status IN ('queued','running') GROUP BY status""", (source_id,))}

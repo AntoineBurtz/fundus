@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from pydantic import BaseModel
 
-from . import config, db, evidence, repo, worker
+from . import config, db, evidence, repo, social, worker
 from .diff import diff_blocks
 from .ingest.watch import WATCH_CHOICES, set_watch
 from .ingest.files import kind_for
@@ -83,6 +83,8 @@ templates.env.filters["eta"] = _eta
 templates.env.filters["filesize"] = lambda n: (
     f"{n / 1_048_576:.1f} MB" if n >= 1_048_576 else f"{max(1, round(n / 1024))} KB").replace(".", ",")
 templates.env.filters["basename"] = lambda p: Path(p).name if p else ""
+templates.env.globals.update(PLATFORMS=social.PLATFORMS, CONTENT=social.CONTENT,
+                             INTERVALS=social.INTERVALS)
 templates.env.globals.update(ARTIFACT_LABELS=evidence.ARTIFACT_LABELS, REASONS=evidence.REASONS,
                              WATCH_CHOICES=WATCH_CHOICES, describe_tsa=evidence.describe_tsa)
 templates.env.globals.update(KINDS=repo.KINDS, STATUSES=repo.STATUSES, COLORS=repo.COLORS,
@@ -259,6 +261,94 @@ def export_markdown(pid: int):
         "\n".join(lines), media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{name}.md"'},
     )
+
+
+# ------------------------------------------------------------ Beobachtete Accounts
+
+@app.get("/p/{pid}/accounts", response_class=HTMLResponse)
+def project_accounts(request: Request, pid: int, msg: str = ""):
+    with db.connection() as conn:
+        ctx = _project_ctx(conn, pid)
+        accounts = social.list_accounts(conn, pid)
+    cookies = {p: social.cookie_status(p) for p in social.PLATFORMS}
+    return render(request, "accounts.html", tab="accounts", accounts=accounts, cookies=cookies,
+                  msg=msg, busy=any(a["job_status"] for a in accounts), **ctx)
+
+
+@app.post("/p/{pid}/accounts")
+def add_account(pid: int, platform: str = Form(...), handle: str = Form(...),
+                stories: str | None = Form(None), highlights: str | None = Form(None),
+                posts: str | None = Form(None), transcribe: str | None = Form(None),
+                interval_hours: float = Form(3)):
+    try:
+        with db.connection() as conn:
+            aid = social.add_account(conn, pid, platform, handle, stories=bool(stories),
+                                     highlights=bool(highlights), posts=bool(posts),
+                                     transcribe=bool(transcribe), interval_hours=interval_hours)
+            social.enqueue_check(conn, aid)
+    except ValueError as e:
+        return back(f"/p/{pid}/accounts", msg=str(e))
+    worker.wake()
+    return back(f"/p/{pid}/accounts", msg="Account wird jetzt zum ersten Mal abgerufen …")
+
+
+def _account_or_404(conn, aid: int):
+    return social.get_account(conn, aid) or _404("Account nicht gefunden")
+
+
+@app.post("/accounts/{aid}/edit")
+def edit_account(aid: int, stories: str | None = Form(None), highlights: str | None = Form(None),
+                 posts: str | None = Form(None), transcribe: str | None = Form(None),
+                 interval_hours: float = Form(3)):
+    with db.connection() as conn:
+        a = _account_or_404(conn, aid)
+        if not (stories or highlights or posts):
+            return back(f"/p/{a['project_id']}/accounts", msg="Mindestens eine Inhaltsart auswählen.")
+        social.update_account(conn, aid, stories=int(bool(stories)), highlights=int(bool(highlights)),
+                              posts=int(bool(posts)), transcribe=int(bool(transcribe)),
+                              interval_hours=interval_hours)
+    return back(f"/p/{a['project_id']}/accounts", msg="Gespeichert")
+
+
+@app.post("/accounts/{aid}/{action}")
+def account_action(aid: int, action: str):
+    with db.connection() as conn:
+        a = _account_or_404(conn, aid)
+        if action == "check":
+            social.enqueue_check(conn, aid)
+        elif action == "pause":
+            social.update_account(conn, aid, active=0 if a["active"] else 1)
+        elif action == "delete":
+            social.delete_account(conn, aid)
+        else:
+            _404()
+    worker.wake()
+    return back(f"/p/{a['project_id']}/accounts")
+
+
+# ------------------------------------------------------------ Einstellungen
+
+@app.get("/einstellungen", response_class=HTMLResponse)
+def settings(request: Request, msg: str = ""):
+    cookies = {p: social.cookie_status(p) for p in social.PLATFORMS}
+    return render(request, "settings.html", cookies=cookies, msg=msg, cfg=config)
+
+
+@app.post("/einstellungen/cookies/{platform}")
+async def upload_cookies(platform: str, file: UploadFile = File(...)):
+    try:
+        info = social.save_cookies(platform, await file.read())
+    except ValueError as e:
+        return back("/einstellungen", msg=str(e))
+    note = "" if info["session"] else " Achtung: kein Anmelde-Cookie (sessionid) gefunden – war das Konto eingeloggt?"
+    return back("/einstellungen", msg=f"Cookies für {social.PLATFORMS[platform]} gespeichert.{note}")
+
+
+@app.post("/einstellungen/cookies/{platform}/delete")
+def remove_cookies(platform: str):
+    if platform in social.PLATFORMS:
+        social.delete_cookies(platform)
+    return back("/einstellungen", msg="Cookies gelöscht")
 
 
 # ------------------------------------------------------------ Quellen anlegen

@@ -9,11 +9,15 @@ Vorhandene Untertitel nutzen (VTT/SRT/TTML) · Whisper-Modell je Quelle · Forts
 ## ✅ Phase 2a – Beweissicherung
 Fassungen mit Screenshot, PDF, gerenderter Seite · SHA-256-Manifest · unabhängiger RFC-3161-Zeitstempel · Nachweis-ZIP mit Prüfanleitung · Änderungsüberwachung mit Vorher-nachher-Vergleich · Hinweis bei Löschung · ntfy/Home-Assistant-Benachrichtigung · archive.org auf Knopfdruck
 
-## Phase 2b – Erfassung
+## ✅ Phase 2b – Social Media
+Instagram/TikTok-Accounts beobachten: Stories, Highlights, Beiträge automatisch sichern, versiegeln, transkribieren · Cookies des Recherche-Kontos · Hinweis bei abgelaufener Anmeldung
+
+## Phase 2c – Erfassung
 - [ ] Sicherungsnachweis zusätzlich als PDF-Bericht (für Redaktion/Anwalt)
 - [ ] Seiten hinter Paywall/Login: Übernahme aus Browser-Erweiterung (HTML direkt aus dem eingeloggten Tab senden)
 - [ ] Podcast-RSS und YouTube-Kanäle abonnieren → neue Folgen automatisch holen
-- [ ] OCR für Scans und Bilder (Tesseract / ocrmypdf)
+- [ ] OCR für Scans, Bilder und Story-Texte (Tesseract / ocrmypdf)
+- [ ] Weitere Plattformen beobachten (X, Bluesky, Telegram-Kanäle, Facebook-Seiten)
 - [ ] E-Mail-Eingang (Weiterleitung an Fundus-Adresse)
 
 ## Phase 3 – Einordnen

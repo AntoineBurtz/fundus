@@ -7,7 +7,7 @@ from typing import Iterator
 
 from . import config
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -168,6 +168,27 @@ CREATE TABLE IF NOT EXISTS artifacts (
 );
 CREATE INDEX IF NOT EXISTS ix_artifacts_version ON artifacts(version_id);
 
+-- Beobachtete Social-Media-Accounts (Stories, Highlights, Beiträge)
+CREATE TABLE IF NOT EXISTS watched_accounts (
+    id            INTEGER PRIMARY KEY,
+    project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    platform      TEXT NOT NULL,              -- instagram | tiktok
+    handle        TEXT NOT NULL,
+    stories       INTEGER NOT NULL DEFAULT 1,
+    highlights    INTEGER NOT NULL DEFAULT 0,
+    posts         INTEGER NOT NULL DEFAULT 0,
+    transcribe    INTEGER NOT NULL DEFAULT 1,
+    interval_hours REAL NOT NULL DEFAULT 3,
+    active        INTEGER NOT NULL DEFAULT 1,
+    next_check_at TEXT,
+    last_check_at TEXT,
+    last_status   TEXT,
+    last_error    TEXT,
+    item_count    INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    UNIQUE (project_id, platform, handle)
+);
+
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -197,6 +218,14 @@ MIGRATIONS = [
     ("sources", "watch_alert", "INTEGER NOT NULL DEFAULT 0"),
     ("sources", "last_change_at", "TEXT"),
     ("sources", "archive_url", "TEXT"),
+    ("sources", "external_id", "TEXT"),          # z. B. instagram:3412…:1
+    ("sources", "account_id", "INTEGER"),
+]
+
+# Indizes auf nachträglich hinzugefügten Spalten
+POST_MIGRATION_SQL = [
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_sources_external ON sources(project_id, external_id) "
+    "WHERE external_id IS NOT NULL",
 ]
 
 
@@ -205,6 +234,8 @@ def migrate(conn: sqlite3.Connection) -> None:
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
         if column not in cols:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    for sql in POST_MIGRATION_SQL:
+        conn.execute(sql)
 
 
 def init() -> None:

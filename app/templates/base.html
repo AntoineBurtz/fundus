@@ -11,6 +11,7 @@
 <header class="topbar">
   <a class="brand" href="/"><span class="brand-mark">F</span>Fundus</a>
   <nav class="crumbs">{% block crumbs %}{% endblock %}</nav>
+  <a class="settings-link" href="/einstellungen" title="Einstellungen">Einstellungen</a>
   <form class="topsearch" action="/search" method="get" role="search">
     {% if project %}<input type="hidden" name="project" value="{{ project.id }}">{% endif %}
     <input type="search" name="q" value="{{ q or '' }}" placeholder="{% if project %}In „{{ project.name }}“ suchen …{% else %}Alles durchsuchen …{% endif %}" aria-label="Suche">

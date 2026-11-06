@@ -14,6 +14,8 @@ import traceback
 
 from . import repo
 from .db import connection
+from . import social
+from .ingest.accounts import check_account
 from .ingest.capture import capture
 from .ingest.files import ingest_file
 from .ingest.media import ingest_media
@@ -33,13 +35,14 @@ HANDLERS = {
     "seal": seal_job,
     "recheck": recheck,
     "archive": archive_org,
+    "account": check_account,
 }
 
 _stop = threading.Event()
 _wake = threading.Event()
 
 
-def run_one(heavy: bool | None = None) -> bool:
+def run_one(heavy: bool | str | None = None) -> bool:
     """Bearbeitet einen Job. Gibt False zurück, wenn keiner anstand."""
     with connection() as conn:
         row = repo.claim_next_job(conn, heavy)
@@ -95,15 +98,15 @@ def check_schedule(force: bool = False) -> int:
         return 0
     _last_schedule = now
     with connection() as conn:
-        return enqueue_due_checks(conn)
+        return enqueue_due_checks(conn) + social.enqueue_due_accounts(conn)
 
 
-def _loop(heavy: bool) -> None:
+def _loop(lane: str) -> None:
     while not _stop.is_set():
         try:
-            if not heavy:
+            if lane == "schnell":
                 check_schedule()
-            worked = run_one(heavy)
+            worked = run_one(lane)
         except Exception:  # pragma: no cover
             log.exception("Worker-Fehler")
             worked = False
@@ -120,8 +123,8 @@ def start() -> list[threading.Thread]:
     with connection() as conn:
         repo.requeue_stale_jobs(conn)
     threads = [
-        threading.Thread(target=_loop, args=(False,), name="fundus-schnell", daemon=True),
-        threading.Thread(target=_loop, args=(True,), name="fundus-langsam", daemon=True),
+        threading.Thread(target=_loop, args=(lane,), name=f"fundus-{lane}", daemon=True)
+        for lane in ("schnell", "langsam", "social")
     ]
     for t in threads:
         t.start()

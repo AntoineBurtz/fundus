@@ -78,6 +78,10 @@
     </div>
     {% endif %}
 
+    {% if s.description and s.kind in ('image', 'video', 'audio') and not s.text %}
+    <p class="caption">{{ s.description }}</p>
+    {% endif %}
+
     {% if s.kind == 'image' and s.snapshot_path %}
     <figure class="image"><img src="/files/{{ s.snapshot_path }}" alt="{{ s.title }}"></figure>
     {% endif %}

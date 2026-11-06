@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/AntoineBurtz/fundus/issues</Support>
   <Project>https://github.com/AntoineBurtz/fundus</Project>
-  <Overview>Fundus – selbst gehostete Recherche-Plattform: Webseiten, Videos und Podcasts sichern, transkribieren, markieren, zeitlich einordnen und auf Änderungen überwachen. Alle Daten liegen im Ordner /data.</Overview>
+  <Overview>Fundus – selbst gehostete Recherche-Plattform: Webseiten, Videos, Podcasts und Social-Media-Stories sichern, transkribieren, markieren, zeitlich einordnen und auf Änderungen überwachen. Alle Daten liegen im Ordner /data.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
   <TemplateURL/>
@@ -35,5 +35,6 @@
   <Config Name="Zeitstempeldienste" Target="FUNDUS_TSA_URLS" Default="http://timestamp.digicert.com,https://freetsa.org/tsr" Description="RFC-3161-Dienste, der Reihe nach. Es wird nur eine Prüfsumme übertragen. Leer = aus." Type="Variable" Display="advanced" Required="false" Mask="false">http://timestamp.digicert.com,https://freetsa.org/tsr</Config>
   <Config Name="Benachrichtigung" Target="FUNDUS_NOTIFY_URL" Default="" Description="ntfy-Topic (https://ntfy.sh/...) oder Home-Assistant-Webhook für Änderungsmeldungen" Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Eigene Adresse" Target="FUNDUS_BASE_URL" Default="" Description="z. B. http://192.168.1.10:8000 – für Links in Benachrichtigungen" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Social-Media User-Agent" Target="FUNDUS_SOCIAL_USER_AGENT" Default="" Description="Optional: User-Agent des Browsers, aus dem die Instagram/TikTok-Cookies stammen" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Zeitzone" Target="TZ" Default="Europe/Berlin" Description="Zeitzone für Anzeige und Logs" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Berlin</Config>
 </Container>
