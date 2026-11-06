@@ -7,7 +7,7 @@ from typing import Iterator
 
 from . import config
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS sources (
     notes         TEXT NOT NULL DEFAULT '',
     -- Inhalt
     text          TEXT NOT NULL DEFAULT '',   -- lesbarer Text bzw. Transkript
+    transcript_origin TEXT,                   -- z. B. "Untertitel (de)" oder "Whisper small"
     content_hash  TEXT,                       -- SHA-256 des Originals
     snapshot_path TEXT,                       -- Original-HTML / Originaldatei
     media_path    TEXT,                       -- abspielbare Audio-/Videodatei
@@ -100,8 +101,13 @@ CREATE TABLE IF NOT EXISTS jobs (
     id          INTEGER PRIMARY KEY,
     source_id   INTEGER REFERENCES sources(id) ON DELETE CASCADE,
     type        TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'queued', -- queued | running | done | failed
+    status      TEXT NOT NULL DEFAULT 'queued', -- queued | running | done | failed | cancelled
     error       TEXT,
+    options     TEXT NOT NULL DEFAULT '{}',   -- JSON, z. B. {"whisper_model": "base"}
+    progress    REAL,                         -- 0..1
+    eta         REAL,                         -- Restzeit in Sekunden
+    note        TEXT,                         -- aktueller Arbeitsschritt
+    cancel      INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     started_at  TEXT,
     finished_at TEXT
@@ -132,9 +138,28 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+# Spalten, die nach Version 1 hinzugekommen sind (für bestehende Datenbanken)
+MIGRATIONS = [
+    ("sources", "transcript_origin", "TEXT"),
+    ("jobs", "options", "TEXT NOT NULL DEFAULT '{}'"),
+    ("jobs", "progress", "REAL"),
+    ("jobs", "eta", "REAL"),
+    ("jobs", "note", "TEXT"),
+    ("jobs", "cancel", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    for table, column, ddl in MIGRATIONS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
 def init() -> None:
     with connection() as conn:
         conn.executescript(SCHEMA)
+        migrate(conn)
         conn.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
             (str(SCHEMA_VERSION),),

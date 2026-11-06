@@ -8,9 +8,16 @@ services:
     volumes:
       # Unraid: z. B. /mnt/user/appdata/fundus:/data
       - ./data:/data
+    # Optional: Container insgesamt auf einige Kerne begrenzen
+    # cpus: "4"
     environment:
       # Whisper-Modell: tiny | base | small | medium | large-v3
       FUNDUS_WHISPER_MODEL: small
+      # CPU-Threads für Whisper (0 = halbe Kernzahl)
+      FUNDUS_WHISPER_THREADS: "0"
+      # Vorhandene Untertitel nutzen: auto | manual | off
+      FUNDUS_SUBTITLES: auto
+      FUNDUS_SUBTITLE_LANGS: "de,en"
       # Leer = automatisch erkennen, sonst z. B. "de"
       FUNDUS_WHISPER_LANGUAGE: ""
       # 1 = Videos komplett behalten (sonst nur Tonspur)

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .. import config, repo
 from ..db import connection
+from ..jobs import JobContext
 from ..util import normalize_date, sha256_file
 
 TEXT_TYPES = {"text/plain", "text/markdown", "text/csv"}
@@ -75,7 +76,7 @@ def _docx_text(path: Path) -> str:
     return "\n".join(html.unescape(t) for t in out if t.strip())
 
 
-def ingest_file(source_id: int) -> str | None:
+def ingest_file(source_id: int, job: JobContext):
     with connection() as conn:
         src = repo.get_source(conn, source_id)
     path = config.FILES_DIR / src["snapshot_path"]
@@ -87,7 +88,7 @@ def ingest_file(source_id: int) -> str | None:
         fields["duration"] = probe_duration(path)
         with connection() as conn:
             repo.update_source(conn, source_id, **fields)
-        return "transcribe"
+        return ("transcribe", job.options)
     if src["kind"] == "document":
         info = extract_file(path, src["mime_type"])
         fields["text"] = info.get("text", "")

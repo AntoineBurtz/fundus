@@ -54,7 +54,33 @@ templates.env.filters.update(
     cslug=color_slug, snippet=_snippet,
     domain=lambda u: urlparse(u).netloc.removeprefix("www.") if u else "",
 )
-templates.env.globals.update(KINDS=repo.KINDS, STATUSES=repo.STATUSES, COLORS=repo.COLORS)
+def _eta(seconds: float | None) -> str:
+    if seconds is None:
+        return ""
+    if seconds < 60:
+        return "noch < 1 Min."
+    minutes = round(seconds / 60)
+    if minutes < 90:
+        return f"noch ca. {minutes} Min."
+    return f"noch ca. {minutes / 60:.1f} Std.".replace(".", ",", 1)
+
+
+def _job_options(whisper_model: str = "", use_subtitles: str | None = "1",
+                 force_whisper: bool = False) -> dict:
+    opts: dict = {}
+    if whisper_model in config.WHISPER_MODELS:
+        opts["whisper_model"] = whisper_model
+    if not use_subtitles:
+        opts["subtitles"] = "off"
+    if force_whisper:
+        opts["force_whisper"] = True
+    return opts
+
+
+templates.env.filters["eta"] = _eta
+templates.env.globals.update(KINDS=repo.KINDS, STATUSES=repo.STATUSES, COLORS=repo.COLORS,
+                             WHISPER_MODELS=config.WHISPER_MODELS,
+                             DEFAULT_MODEL=config.WHISPER_MODEL)
 
 
 # ------------------------------------------------------------ Zugangsschutz
@@ -124,8 +150,9 @@ def project(request: Request, pid: int, kind: str = "", status: str = "", tag: s
         ctx = _project_ctx(conn, pid)
         sources = repo.list_sources(conn, pid, kind or None, status or None, tag or None, order)
         stags = repo.source_tags(conn, [s["id"] for s in sources])
+        active = repo.active_jobs_for_project(conn, pid)
         busy = any(s["state"] in ("wartet", "läuft") for s in sources)
-    return render(request, "project.html", tab="sources", sources=sources, stags=stags,
+    return render(request, "project.html", tab="sources", sources=sources, stags=stags, active=active,
                   f={"kind": kind, "status": status, "tag": tag, "order": order},
                   busy=busy, msg=msg, **ctx)
 
@@ -231,7 +258,9 @@ def export_markdown(pid: int):
 
 @app.post("/p/{pid}/sources/url")
 def add_url(pid: int, url: str = Form(...), mode: str = Form("auto"),
-            event_date: str = Form(""), tags: str = Form("")):
+            event_date: str = Form(""), tags: str = Form(""),
+            whisper_model: str = Form(""), use_subtitles: str | None = Form(None),
+            options_shown: str = Form("")):
     url = url.strip()
     if not re.match(r"^https?://", url):
         url = "https://" + url
@@ -242,7 +271,10 @@ def add_url(pid: int, url: str = Form(...), mode: str = Form("auto"),
                                      event_date=event_date or None, state="wartet")
             if tags:
                 repo.set_source_tags(conn, sid, tags)
-            repo.enqueue_job(conn, sid, "media" if as_media else "web")
+            # Ohne aufgeklappte Optionen (Bookmarklet, alte Formulare) gilt: Untertitel nutzen
+            subs = use_subtitles if options_shown else "1"
+            repo.enqueue_job(conn, sid, "media" if as_media else "web",
+                             _job_options(whisper_model, subs))
     except ValueError as e:
         return back(f"/p/{pid}", msg=str(e))
     worker.wake()
@@ -251,7 +283,8 @@ def add_url(pid: int, url: str = Form(...), mode: str = Form("auto"),
 
 @app.post("/p/{pid}/sources/upload")
 async def add_upload(pid: int, files: list[UploadFile] = File(...),
-                     event_date: str = Form(""), tags: str = Form("")):
+                     event_date: str = Form(""), tags: str = Form(""),
+                     whisper_model: str = Form("")):
     created = []
     for up in files:
         if not up.filename:
@@ -272,7 +305,7 @@ async def add_upload(pid: int, files: list[UploadFile] = File(...),
                 out.write(chunk)
         with db.connection() as conn:
             repo.update_source(conn, sid, snapshot_path=str(dest.relative_to(config.FILES_DIR)))
-            repo.enqueue_job(conn, sid, "file")
+            repo.enqueue_job(conn, sid, "file", _job_options(whisper_model))
         created.append(sid)
     worker.wake()
     if len(created) == 1:
@@ -310,7 +343,8 @@ def quick_add_post(url: str = Form(...), project_id: str = Form(""), new_project
                    mode: str = Form("auto"), tags: str = Form("")):
     with db.connection() as conn:
         pid = repo.create_project(conn, new_project) if new_project.strip() else int(project_id)
-    return add_url(pid, url=url, mode=mode, event_date="", tags=tags)
+    return add_url(pid, url=url, mode=mode, event_date="", tags=tags, whisper_model="",
+                   use_subtitles="1", options_shown="")
 
 
 # ------------------------------------------------------------ Quelle ansehen
@@ -325,9 +359,10 @@ def source(request: Request, sid: int, t: float | None = None, h: int | None = N
         htags = repo.highlight_tags(conn, [x["id"] for x in hls + orphans])
         tags = repo.source_tags(conn, [sid])[sid]
         jobs = repo.source_jobs(conn, sid)
+        active = repo.active_job(conn, sid)
     blocks = render_blocks(s["text"], hls, segments)
     return render(request, "source.html", s=s, project=p, blocks=blocks, highlights=hls,
-                  orphans=orphans, htags=htags, tags=tags, jobs=jobs, segments=segments,
+                  orphans=orphans, htags=htags, tags=tags, jobs=jobs, segments=segments, active=active,
                   start_time=t, focus=h, msg=msg)
 
 
@@ -335,7 +370,13 @@ def source(request: Request, sid: int, t: float | None = None, h: int | None = N
 def source_state(sid: int):
     with db.connection() as conn:
         s = repo.get_source(conn, sid) or _404()
-    return {"state": s["state"], "error": s["error"]}
+        job = repo.active_job(conn, sid)
+    out = {"state": s["state"], "error": s["error"]}
+    if job is not None:
+        out.update(job=job["type"], job_status=job["status"], note=job["note"],
+                   progress=job["progress"], eta=job["eta"], eta_text=_eta(job["eta"]),
+                   cancelling=bool(job["cancel"]))
+    return out
 
 
 @app.post("/s/{sid}/edit")
@@ -378,8 +419,8 @@ def delete_source(sid: int):
 
 
 @app.post("/s/{sid}/run/{action}")
-def rerun(sid: int, action: str):
-    """Abruf wiederholen, als Medium laden oder neu transkribieren."""
+def rerun(sid: int, action: str, whisper_model: str = Form("")):
+    """Abruf wiederholen, als Medium laden, neu transkribieren oder abbrechen."""
     with db.connection() as conn:
         s = repo.get_source(conn, sid) or _404()
         if action == "retry":
@@ -388,11 +429,13 @@ def rerun(sid: int, action: str):
                 job = "file"
             if job == "file" and not s["snapshot_path"]:
                 return back(f"/s/{sid}", msg="Keine Datei vorhanden.")
-            repo.enqueue_job(conn, sid, job)
+            repo.enqueue_job(conn, sid, job, _job_options(whisper_model))
         elif action == "media" and s["url"]:
-            repo.enqueue_job(conn, sid, "media")
+            repo.enqueue_job(conn, sid, "media", _job_options(whisper_model))
         elif action == "transcribe" and s["media_path"]:
-            repo.enqueue_job(conn, sid, "transcribe")
+            repo.enqueue_job(conn, sid, "transcribe", _job_options(whisper_model, force_whisper=True))
+        elif action == "cancel":
+            repo.request_cancel(conn, sid)
         else:
             return back(f"/s/{sid}", msg="Aktion nicht möglich.")
     worker.wake()

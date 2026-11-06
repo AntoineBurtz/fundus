@@ -246,6 +246,24 @@ input.big { font-size: 17px; padding: 12px 14px; }
 .notice.working { background: #fbf3dc; border: 1px solid #ecdca9; color: #6a5200; }
 .notice.error { background: #fbe9e5; border: 1px solid #efc2b9; color: var(--bad); }
 .notice.error code { flex-basis: 100%; white-space: pre-wrap; }
+.notice.working { display: grid; gap: 10px; }
+.notice.muted { background: #ece7da; border: 1px solid var(--line-2); color: var(--ink-2); }
+.job-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.job-eta { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.job-cancel { margin-left: auto; }
+.bar { height: 6px; border-radius: 3px; background: rgba(106,82,0,.15); overflow: hidden; position: relative; }
+.bar span { display: block; height: 100%; background: #b8860b; border-radius: 3px; transition: width .6s ease; }
+.bar.indet span { width: 30% !important; position: absolute; animation: indet 1.4s ease-in-out infinite; }
+@keyframes indet { from { left: -30%; } to { left: 100%; } }
+.opts { font-size: 13.5px; color: var(--muted); }
+.opts summary { cursor: pointer; width: max-content; }
+.opts[open] summary { margin-bottom: 8px; }
+.opts .row { align-items: center; }
+.opts select { flex: 0 1 auto; width: auto; }
+.check { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; flex: 1 1 300px; color: var(--ink-2); font-size: 13.5px; }
+.check input { width: auto; }
+.retranscribe { margin-top: 12px; }
+.retranscribe .hint { margin-top: 8px; }
 .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

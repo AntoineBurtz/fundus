@@ -1,0 +1,4 @@
+<select name="whisper_model" aria-label="Whisper-Modell" title="Whisper-Modell für die Transkription (läuft auf dem Prozessor)">
+  <option value="">Whisper: Standard ({{ DEFAULT_MODEL }})</option>
+  {% for m, hint in WHISPER_MODELS.items() %}<option value="{{ m }}" {{ 'selected' if selected_model == m }}>Whisper {{ m }} – {{ hint }}</option>{% endfor %}
+</select>

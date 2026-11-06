@@ -10,6 +10,7 @@ import trafilatura
 
 from .. import config, repo
 from ..db import connection
+from ..jobs import JobContext
 from ..util import sha256_bytes
 
 # Domains, deren Links standardmäßig als Video/Audio geladen werden
@@ -52,11 +53,12 @@ def extract_html(html: str, url: str | None = None) -> dict:
     }
 
 
-def ingest_web(source_id: int) -> str | None:
+def ingest_web(source_id: int, job: JobContext):
     """Ruft die Seite ab. Gibt ggf. einen Folge-Jobtyp zurück (z. B. bei Mediendateien)."""
     with connection() as conn:
         src = repo.get_source(conn, source_id)
     url = src["url"]
+    job.progress(None, "Seite abrufen", force=True)
     resp = httpx.get(
         url, follow_redirects=True, timeout=45,
         headers={"User-Agent": config.USER_AGENT, "Accept-Language": "de,en;q=0.8"},
@@ -67,7 +69,7 @@ def ingest_web(source_id: int) -> str | None:
     if ctype.startswith(("audio/", "video/")):
         with connection() as conn:
             repo.update_source(conn, source_id, kind="audio" if ctype.startswith("audio/") else "video")
-        return "media"
+        return ("media", job.options)
 
     folder = repo.source_dir(source_id)
     folder.mkdir(parents=True, exist_ok=True)

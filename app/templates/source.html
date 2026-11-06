@@ -17,24 +17,39 @@
         <span title="Zeitpunkt der Sicherung">gesichert {{ s.captured_at|hdatetime }}</span>
         {% if s.duration %}<span>{{ s.duration|timecode }}</span>{% endif %}
         {% if s.language %}<span>{{ s.language }}</span>{% endif %}
+        {% if s.transcript_origin %}<span title="Herkunft des Transkripts">Transkript: {{ s.transcript_origin }}</span>{% endif %}
       </div>
       <div class="doc-links">
         {% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">Original öffnen ↗</a>{% endif %}
         {% if s.snapshot_path and s.kind in ('web', 'document', 'image') %}<a href="/s/{{ s.id }}/snapshot" target="_blank">Gesicherte Kopie</a>{% endif %}
         {% if s.media_path %}<a href="/files/{{ s.media_path }}" download>Mediendatei</a>{% endif %}
         {% if s.kind == 'web' and s.url %}<form method="post" action="/s/{{ s.id }}/run/media"><button class="linkish" title="Video/Audio dieser Seite laden und transkribieren">Als Medium laden</button></form>{% endif %}
-        {% if s.media_path %}<form method="post" action="/s/{{ s.id }}/run/transcribe"><button class="linkish" onclick="return confirm('Neu transkribieren? Markierungen werden – soweit möglich – neu zugeordnet.')">Neu transkribieren</button></form>{% endif %}
       </div>
+      {% if s.media_path and s.state not in ('wartet', 'läuft') %}
+      <details class="opts retranscribe">
+        <summary>{{ 'Neu transkribieren' if s.text else 'Transkribieren' }}</summary>
+        <form method="post" action="/s/{{ s.id }}/run/transcribe" class="row"
+              {% if s.text %}onsubmit="return confirm('Transkript ersetzen? Markierungen werden – soweit möglich – neu zugeordnet.')"{% endif %}>
+          {% include "_model_select.html" %}
+          <button class="btn">Mit Whisper starten</button>
+        </form>
+        <p class="hint">Läuft im Hintergrund auf dem Prozessor. Grobe Richtwerte für 1 Stunde Audio: tiny/base 5–15 Min., small 20–60 Min., medium 1–3 Std.</p>
+      </details>
+      {% endif %}
     </header>
 
     {% if s.state in ('wartet', 'läuft') %}
-    <div class="notice working">
-      <span class="spinner"></span>
-      {% if jobs and jobs[0].type == 'transcribe' %}Transkription läuft – das kann je nach Länge einige Minuten dauern.
-      {% elif jobs and jobs[0].type == 'media' %}Medium wird heruntergeladen …
-      {% else %}Wird verarbeitet …{% endif %}
-      Die Seite aktualisiert sich automatisch.
+    <div class="notice working" id="jobbox">
+      <div class="job-line">
+        <span class="spinner"></span>
+        <span id="job-note">{% if active and active.status == 'running' %}{{ active.note or 'Wird verarbeitet' }}{% elif active and active.type == 'transcribe' %}Wartet, bis die laufende Transkription fertig ist{% else %}In der Warteschlange{% endif %} …</span>
+        <span id="job-eta" class="job-eta">{{ active.eta|eta if active }}</span>
+        <form method="post" action="/s/{{ s.id }}/run/cancel" class="job-cancel"><button class="btn small" id="job-cancel" {{ 'disabled' if active and active.cancel }}>{{ 'Wird abgebrochen …' if active and active.cancel else 'Abbrechen' }}</button></form>
+      </div>
+      <div class="bar {{ 'indet' if not active or active.progress is none }}"><span id="job-bar" style="width: {{ ((active.progress or 0) * 100)|round(1) if active else 0 }}%"></span></div>
     </div>
+    {% elif s.error == 'Abgebrochen' %}
+    <div class="notice muted">Verarbeitung abgebrochen.{% if s.media_path and not s.text %} Über „Transkribieren“ kannst du es mit einem anderen Modell erneut starten.{% endif %}</div>
     {% elif s.state == 'fehler' %}
     <div class="notice error">
       <b>Verarbeitung fehlgeschlagen.</b> <code>{{ s.error }}</code>

@@ -3,6 +3,9 @@
 ## ✅ Phase 1 – Fundament
 Recherchen · Webseiten sichern · Video/Podcast laden + Whisper-Transkription · Datei-Upload · Notizen · drei Datumsarten · Markierungen mit Notiz/Tags/Datum · Zeitstrahl · Volltextsuche · Status & Glaubwürdigkeit · Markdown-Dossier · Bookmarklet
 
+## ✅ Phase 1.1 – Transkription auf CPU
+Vorhandene Untertitel nutzen (VTT/SRT/TTML) · Whisper-Modell je Quelle · Fortschritt + Restzeit · Abbrechen · eigene Warteschlange für Transkriptionen · CPU-Threads begrenzen
+
 ## Phase 2 – Beweissicherung & Erfassung
 - [ ] Screenshot + PDF der Seite (headless Chromium) zusätzlich zum HTML
 - [ ] Optional automatisch bei archive.org sichern, Archiv-Link speichern
@@ -10,7 +13,6 @@ Recherchen · Webseiten sichern · Video/Podcast laden + Whisper-Transkription �
 - [ ] Seiten hinter Paywall/Login: Übernahme aus Browser-Erweiterung (HTML direkt aus dem eingeloggten Tab senden)
 - [ ] Podcast-RSS und YouTube-Kanäle abonnieren → neue Folgen automatisch holen
 - [ ] OCR für Scans und Bilder (Tesseract / ocrmypdf)
-- [ ] Untertitel von YouTube/Mediatheken als schneller Vorab-Text nutzen
 - [ ] E-Mail-Eingang (Weiterleitung an Fundus-Adresse)
 
 ## Phase 3 – Einordnen
@@ -30,5 +32,5 @@ Recherchen · Webseiten sichern · Video/Podcast laden + Whisper-Transkription �
 ## Betrieb
 - [ ] Mehrbenutzer mit Rollen, Freigabe einzelner Recherchen
 - [ ] Verschlüsselung sensibler Recherchen (Quellenschutz)
-- [ ] Getrennter Worker-Container für Transkription (GPU)
+- [ ] Getrennter Worker-Container für Transkription (z. B. auf einem stärkeren Rechner)
 - [ ] Backup/Restore als ZIP aus der Oberfläche

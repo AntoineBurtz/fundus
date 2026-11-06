@@ -20,6 +20,28 @@ WHISPER_COMPUTE = _env("FUNDUS_WHISPER_COMPUTE", "int8")
 # Leer = automatische Spracherkennung, sonst z. B. "de"
 WHISPER_LANGUAGE = _env("FUNDUS_WHISPER_LANGUAGE", "") or None
 
+# CPU-Threads für Whisper. 0 = automatisch (halbe Kernzahl, damit der Server
+# nebenher reaktionsfähig bleibt)
+_threads = int(_env("FUNDUS_WHISPER_THREADS", "0") or 0)
+WHISPER_THREADS = _threads if _threads > 0 else max(1, (os.cpu_count() or 2) // 2)
+
+# Auswahl in der Oberfläche: Modell → Beschreibung
+WHISPER_MODELS = {
+    "tiny": "sehr schnell, ungenau",
+    "base": "schnell, brauchbar",
+    "small": "ausgewogen",
+    "medium": "genau, langsam",
+    "large-v3-turbo": "am genauesten, sehr langsam auf CPU",
+}
+
+# Vorhandene Untertitel statt Whisper nutzen:
+#   auto   = handgemachte bevorzugt, automatische (Originalsprache) akzeptiert
+#   manual = nur handgemachte Untertitel
+#   off    = immer Whisper
+SUBTITLES = _env("FUNDUS_SUBTITLES", "auto")
+# Bevorzugte Untertitelsprachen in Reihenfolge
+SUBTITLE_LANGS = [x.strip() for x in _env("FUNDUS_SUBTITLE_LANGS", "de,en").split(",") if x.strip()]
+
 # Videos zusätzlich zum Ton behalten (braucht deutlich mehr Platz)
 KEEP_VIDEO = _env("FUNDUS_KEEP_VIDEO", "0") == "1"
 

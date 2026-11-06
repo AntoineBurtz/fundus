@@ -83,10 +83,26 @@
       try {
         const st = await api("GET", `/s/${sourceId}/state`);
         if (!["wartet", "läuft"].includes(st.state)) return reloadKeepingScroll();
+        showJob(st);
       } catch (e) { /* weiter versuchen */ }
-      setTimeout(poll, 4000);
+      setTimeout(poll, 2500);
     };
-    setTimeout(poll, 3000);
+    setTimeout(poll, 1500);
+  }
+
+  function showJob(st) {
+    const note = $("#job-note"), eta = $("#job-eta"), bar = $("#job-bar"), btn = $("#job-cancel");
+    if (!note) return;
+    if (st.job_status === "running") {
+      const pct = st.progress == null ? "" : ` · ${Math.round(st.progress * 100)} %`;
+      note.textContent = `${st.note || "Wird verarbeitet"}${pct} …`;
+    } else if (st.job === "transcribe") {
+      note.textContent = "Wartet, bis die laufende Transkription fertig ist …";
+    }
+    eta.textContent = st.eta_text || "";
+    bar.parentElement.classList.toggle("indet", st.progress == null);
+    bar.style.width = `${((st.progress || 0) * 100).toFixed(1)}%`;
+    if (st.cancelling && btn) { btn.disabled = true; btn.textContent = "Wird abgebrochen …"; }
   }
 
   // --- Auswahl → Zeichen-Offsets im Quelltext

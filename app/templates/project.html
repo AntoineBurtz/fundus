@@ -23,6 +23,14 @@
       <input name="tags" placeholder="Tags, durch Komma getrennt">
       <button class="btn primary">Sichern</button>
     </div>
+    <details class="opts">
+      <summary>Transkription</summary>
+      <input type="hidden" name="options_shown" value="1">
+      <div class="row">
+        <label class="check"><input type="checkbox" name="use_subtitles" value="1" checked> Vorhandene Untertitel nutzen (schnell) – Whisper nur, wenn keine da sind</label>
+        {% include "_model_select.html" %}
+      </div>
+    </details>
   </form>
 
   <form class="adder-pane" data-pane="file" method="post" action="/p/{{ project.id }}/sources/upload" enctype="multipart/form-data">
@@ -33,6 +41,7 @@
     <div class="row">
       <input name="event_date" placeholder="Betrifft (Datum, optional)">
       <input name="tags" placeholder="Tags, durch Komma getrennt">
+      {% include "_model_select.html" %}
       <button class="btn primary">Hochladen</button>
     </div>
   </form>
@@ -86,7 +95,12 @@
           {% if s.duration %}<span>{{ s.duration|timecode }}</span>{% endif %}
           {% if s.highlight_count %}<span class="hlc">{{ s.highlight_count }} Markierung{{ 'en' if s.highlight_count != 1 }}</span>{% endif %}
         </div>
-        {% if s.state in ('wartet', 'läuft') %}<div class="progress">{{ 'Wird verarbeitet …' if s.state == 'läuft' else 'In der Warteschlange …' }}</div>{% endif %}
+        {% if s.state in ('wartet', 'läuft') %}{% set j = active.get(s.id) %}
+        <div class="progress">
+          {% if j and j.status == 'running' %}{{ j.note or 'Wird verarbeitet' }}{% if j.progress is not none %} · {{ (j.progress * 100)|round|int }} %{% endif %}{% if j.eta is not none %} · {{ j.eta|eta }}{% endif %}
+          {% elif j and j.type == 'transcribe' %}Wartet auf Transkription …
+          {% else %}In der Warteschlange …{% endif %}
+        </div>{% endif %}
         {% if s.state == 'fehler' %}<div class="error-line">Fehler: {{ s.error }}</div>{% endif %}
       </a>
       <div class="sr-side">
