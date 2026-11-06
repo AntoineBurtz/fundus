@@ -1,6 +1,7 @@
 """Datenzugriff: Projekte, Quellen, Transkripte, Markierungen, Tags, Suche, Jobs."""
 from __future__ import annotations
 
+import json
 import shutil
 import sqlite3
 from typing import Any, Iterable
@@ -29,7 +30,7 @@ SOURCE_EDITABLE = {
     "title", "url", "author", "site_name", "description", "language",
     "published_at", "event_date", "event_date_end", "status", "credibility",
     "notes", "text", "content_hash", "snapshot_path", "media_path",
-    "mime_type", "duration", "state", "error", "kind",
+    "mime_type", "duration", "state", "error", "kind", "transcript_origin",
 }
 DATE_FIELDS = {"published_at", "event_date", "event_date_end"}
 
@@ -269,7 +270,8 @@ def project_tags(conn: sqlite3.Connection, project_id: int) -> list[sqlite3.Row]
 # ---------------------------------------------------------------- Transkripte
 
 def set_transcript(
-    conn: sqlite3.Connection, source_id: int, segments: list[dict[str, Any]], language: str = ""
+    conn: sqlite3.Connection, source_id: int, segments: list[dict[str, Any]], language: str = "",
+    origin: str | None = None,
 ) -> None:
     """Speichert Segmente und baut daraus den durchsuchbaren Text (eine Zeile je Segment)."""
     conn.execute("DELETE FROM transcript_segments WHERE source_id = ?", (source_id,))
@@ -287,6 +289,8 @@ def set_transcript(
         lines.append(text)
         offset += len(text) + 1  # +1 für den Zeilenumbruch
     fields: dict[str, Any] = {"text": "\n".join(lines)}
+    if origin:
+        fields["transcript_origin"] = origin
     if language:
         fields["language"] = language
     update_source(conn, source_id, **fields)
@@ -516,17 +520,35 @@ def search(
 
 # ---------------------------------------------------------------- Jobs
 
-def enqueue_job(conn: sqlite3.Connection, source_id: int, job_type: str) -> int:
+# Transkriptionen sind langsam (CPU) und laufen deshalb in einer eigenen Spur,
+# damit Webseiten und Downloads nicht stundenlang warten müssen.
+HEAVY_JOBS = ("transcribe",)
+
+
+def enqueue_job(
+    conn: sqlite3.Connection, source_id: int, job_type: str, options: dict[str, Any] | None = None
+) -> int:
     conn.execute("UPDATE sources SET state = 'wartet', error = NULL WHERE id = ?", (source_id,))
     return conn.execute(
-        "INSERT INTO jobs(source_id, type) VALUES (?, ?)", (source_id, job_type)
+        "INSERT INTO jobs(source_id, type, options) VALUES (?, ?, ?)",
+        (source_id, job_type, json.dumps(options or {})),
     ).lastrowid
 
 
-def claim_next_job(conn: sqlite3.Connection) -> sqlite3.Row | None:
-    row = conn.execute(
-        "SELECT * FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1"
-    ).fetchone()
+def claim_next_job(
+    conn: sqlite3.Connection, heavy: bool | None = None
+) -> sqlite3.Row | None:
+    """Nächsten Job holen. heavy=True nur Transkriptionen, False alles andere, None beides."""
+    where = "status = 'queued'"
+    ph = ",".join("?" * len(HEAVY_JOBS))
+    args: list[Any] = []
+    if heavy is True:
+        where += f" AND type IN ({ph})"
+        args += HEAVY_JOBS
+    elif heavy is False:
+        where += f" AND type NOT IN ({ph})"
+        args += HEAVY_JOBS
+    row = conn.execute(f"SELECT * FROM jobs WHERE {where} ORDER BY id LIMIT 1", args).fetchone()
     if row is None:
         return None
     updated = conn.execute(
@@ -536,39 +558,95 @@ def claim_next_job(conn: sqlite3.Connection) -> sqlite3.Row | None:
     if not updated:
         return None
     conn.execute("UPDATE sources SET state = 'läuft' WHERE id = ?", (row["source_id"],))
-    return row
+    return conn.execute("SELECT * FROM jobs WHERE id = ?", (row["id"],)).fetchone()
 
 
-def finish_job(conn: sqlite3.Connection, job_id: int, error: str | None = None) -> None:
-    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+def set_job_progress(
+    conn: sqlite3.Connection, job_id: int, progress: float | None, eta: float | None, note: str
+) -> None:
     conn.execute(
-        "UPDATE jobs SET status = ?, error = ?, finished_at = ? WHERE id = ?",
-        ("failed" if error else "done", error, now_iso(), job_id),
+        "UPDATE jobs SET progress = ?, eta = ?, note = ? WHERE id = ?", (progress, eta, note, job_id)
     )
-    if job is None:
-        return
-    pending = conn.execute(
-        "SELECT COUNT(*) FROM jobs WHERE source_id = ? AND status IN ('queued','running')",
-        (job["source_id"],),
-    ).fetchone()[0]
+
+
+def job_cancel_requested(conn: sqlite3.Connection, job_id: int) -> bool:
+    row = conn.execute("SELECT cancel FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    return bool(row and row["cancel"])
+
+
+def request_cancel(conn: sqlite3.Connection, source_id: int) -> None:
+    """Wartende Jobs sofort beenden, laufende zum Abbruch markieren."""
+    conn.execute(
+        """UPDATE jobs SET status = 'cancelled', error = 'Abgebrochen', finished_at = ?
+           WHERE source_id = ? AND status = 'queued'""",
+        (now_iso(), source_id),
+    )
+    conn.execute(
+        "UPDATE jobs SET cancel = 1 WHERE source_id = ? AND status = 'running'", (source_id,)
+    )
+    _refresh_source_state(conn, source_id, cancelled=True)
+
+
+def _refresh_source_state(conn: sqlite3.Connection, source_id: int, error: str | None = None,
+                          cancelled: bool = False) -> None:
+    counts = {r["status"]: r["n"] for r in conn.execute(
+        """SELECT status, COUNT(*) AS n FROM jobs WHERE source_id = ?
+           AND status IN ('queued','running') GROUP BY status""", (source_id,))}
     if error:
-        conn.execute(
-            "UPDATE sources SET state = 'fehler', error = ? WHERE id = ?", (error, job["source_id"])
-        )
-    elif not pending:
-        conn.execute(
-            "UPDATE sources SET state = 'bereit', error = NULL WHERE id = ?", (job["source_id"],)
-        )
+        conn.execute("UPDATE sources SET state = 'fehler', error = ? WHERE id = ?", (error, source_id))
+    elif counts.get("running"):
+        conn.execute("UPDATE sources SET state = 'läuft' WHERE id = ?", (source_id,))
+    elif counts.get("queued"):
+        conn.execute("UPDATE sources SET state = 'wartet' WHERE id = ?", (source_id,))
     else:
-        conn.execute("UPDATE sources SET state = 'wartet' WHERE id = ?", (job["source_id"],))
+        conn.execute(
+            "UPDATE sources SET state = 'bereit', error = ? WHERE id = ?",
+            ("Abgebrochen" if cancelled else None, source_id),
+        )
+
+
+def finish_job(
+    conn: sqlite3.Connection, job_id: int, error: str | None = None, cancelled: bool = False
+) -> None:
+    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    status = "cancelled" if cancelled else ("failed" if error else "done")
+    conn.execute(
+        "UPDATE jobs SET status = ?, error = ?, finished_at = ?, eta = NULL WHERE id = ?",
+        (status, "Abgebrochen" if cancelled else error, now_iso(), job_id),
+    )
+    if job is not None:
+        _refresh_source_state(conn, job["source_id"], None if cancelled else error, cancelled)
 
 
 def requeue_stale_jobs(conn: sqlite3.Connection) -> None:
-    """Nach einem Neustart unterbrochene Jobs wieder einreihen."""
-    conn.execute("UPDATE jobs SET status = 'queued', started_at = NULL WHERE status = 'running'")
+    """Nach einem Neustart unterbrochene Jobs wieder einreihen (abgebrochene beenden)."""
+    conn.execute(
+        """UPDATE jobs SET status = 'cancelled', error = 'Abgebrochen', finished_at = ?
+           WHERE status = 'running' AND cancel = 1""", (now_iso(),))
+    conn.execute(
+        """UPDATE jobs SET status = 'queued', started_at = NULL, progress = NULL, eta = NULL, note = NULL
+           WHERE status = 'running'""")
     conn.execute(
         "UPDATE sources SET state = 'wartet' WHERE id IN (SELECT source_id FROM jobs WHERE status = 'queued')"
     )
+
+
+def active_job(conn: sqlite3.Connection, source_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        """SELECT * FROM jobs WHERE source_id = ? AND status IN ('running','queued')
+           ORDER BY (status = 'running') DESC, id LIMIT 1""",
+        (source_id,),
+    ).fetchone()
+
+
+def active_jobs_for_project(conn: sqlite3.Connection, project_id: int) -> dict[int, sqlite3.Row]:
+    rows = conn.execute(
+        """SELECT j.* FROM jobs j JOIN sources s ON s.id = j.source_id
+           WHERE s.project_id = ? AND j.status IN ('running','queued')
+           ORDER BY (j.status = 'running'), j.id DESC""",
+        (project_id,),
+    ).fetchall()
+    return {r["source_id"]: r for r in rows}  # laufende Jobs überschreiben wartende
 
 
 def source_jobs(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:

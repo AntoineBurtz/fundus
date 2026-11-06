@@ -8,7 +8,8 @@ Selbst gehostete Plattform zum **Sammeln, Sichern, Einordnen und Darstellen** vo
 |---|---|
 | **Recherchen** | Getrennte Projekte mit Beschreibung, Tags, Status-Filtern |
 | **Webseiten** | Original-HTML wird gesichert, lesbarer Haupttext + Metadaten (Titel, Autor:in, Medium, Datum) extrahiert, SHA-256-Prüfsumme |
-| **Videos & Podcasts** | Download per yt-dlp (YouTube, Mediatheken, ARD Audiothek, SoundCloud, direkte MP3/MP4 …), lokale Transkription mit Whisper inkl. Zeitstempeln |
+| **Videos & Podcasts** | Download per yt-dlp (YouTube, Mediatheken, ARD Audiothek, SoundCloud, direkte MP3/MP4 …). Vorhandene Untertitel werden direkt als Transkript übernommen, sonst lokale Transkription mit Whisper – jeweils mit Zeitstempeln |
+| **Transkription auf CPU** | Modell pro Quelle wählbar, Fortschritt mit Restzeit, Abbrechen, eigene Warteschlange (Webseiten warten nie hinter einem langen Podcast) |
 | **Dateien** | PDF, Word, Text, HTML, Audio, Video, Bilder hochladen |
 | **Notizen** | Eigene Notizen (Telefonate, Beobachtungen) als vollwertige Quelle |
 | **Zeitliche Einordnung** | Drei getrennte Daten: *veröffentlicht*, *gesichert* (automatisch), *betrifft* (Ereignisdatum, auch als Zeitraum). Unvollständige Daten wie „2019“ oder „03.2019“ sind erlaubt |
@@ -51,10 +52,20 @@ pytest
 | `FUNDUS_WHISPER_MODEL` | `small` | `tiny`, `base`, `small`, `medium`, `large-v3` – größer = genauer, langsamer |
 | `FUNDUS_WHISPER_LANGUAGE` | *(leer)* | Leer = automatisch, sonst z. B. `de` |
 | `FUNDUS_WHISPER_DEVICE` | `auto` | `cpu` oder `cuda` (mit NVIDIA-GPU deutlich schneller) |
+| `FUNDUS_WHISPER_THREADS` | `0` | CPU-Threads für Whisper; `0` = halbe Kernzahl, damit der Server nebenher reaktionsfähig bleibt |
+| `FUNDUS_SUBTITLES` | `auto` | `auto` = handgemachte Untertitel bevorzugt, automatische (Originalsprache) akzeptiert · `manual` = nur handgemachte · `off` = immer Whisper |
+| `FUNDUS_SUBTITLE_LANGS` | `de,en` | Bevorzugte Untertitelsprachen |
 | `FUNDUS_KEEP_VIDEO` | `0` | `1` = Video behalten, sonst nur Tonspur |
 | `FUNDUS_USER` / `FUNDUS_PASSWORD` | `fundus` / *(leer)* | Einfacher Zugangsschutz; leer = aus |
 
-**Richtwert Transkription auf CPU:** Modell `small` braucht für eine Stunde Audio grob 15–40 Minuten, je nach Prozessor. Mit `base` geht es etwa dreimal so schnell, mit GPU in wenigen Minuten.
+## Transkription ohne Grafikkarte
+
+1. **Untertitel zuerst:** Bei YouTube, ARD/ZDF-Mediathek & Co. nimmt Fundus vorhandene Untertitel (WebVTT, SRT, TTML) – das dauert Sekunden. Automatisch *übersetzte* Untertitel werden nie verwendet. Die Herkunft steht bei jeder Quelle („Transkript: Untertitel (de)“ bzw. „Whisper small“).
+2. **Whisper als Rückfall:** Gibt es keine Untertitel, transkribiert Whisper auf dem Prozessor. Grobe Richtwerte für 1 Stunde Audio: `tiny`/`base` 5–15 Min., `small` 20–60 Min., `medium` 1–3 Std.
+3. **Modell je Quelle:** Beim Hinzufügen unter „Transkription“ oder später über „Neu transkribieren“ wählbar – etwa erst `base` für einen schnellen Überblick, dann `medium` für ein Interview, aus dem zitiert wird.
+4. **Eigene Spur:** Transkriptionen laufen nacheinander in einer separaten Warteschlange. Webseiten, Uploads und Downloads werden parallel weiter verarbeitet.
+
+Laufende Transkriptionen zeigen Fortschritt und Restzeit und lassen sich abbrechen. Nach einem Neustart des Containers werden unterbrochene Jobs automatisch neu gestartet.
 
 ## Aufbau
 

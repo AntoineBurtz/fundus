@@ -121,7 +121,7 @@ def test_upload_text_and_audio_transcription(client, monkeypatch):
                     SimpleNamespace(start=2.0, end=5.0, text=" Es geht um den Lech.")]
             return iter(segs), SimpleNamespace(language="de", duration=5.0)
 
-    monkeypatch.setattr(tr, "_get_model", lambda: FakeModel())
+    monkeypatch.setattr(tr, "_get_model", lambda name: FakeModel())
     client.post(f"/p/{pid}/sources/upload",
                 files={"files": ("interview.mp3", io.BytesIO(b"ID3fake"), "audio/mpeg")})
     assert worker.drain() == 2  # file → transcribe
