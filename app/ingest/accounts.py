@@ -35,8 +35,22 @@ class AuthError(Exception):
     pass
 
 
+def date_filter(date_min: datetime) -> str:
+    """gallery-dl-Filter: nur Inhalte ab date_min, danach Abruf beenden.
+
+    Profile liefern neueste Beiträge zuerst. Sobald ein älterer Beitrag kommt,
+    stoppt abort() das Weiterblättern – das spart viele Anfragen. Angeheftete
+    (ältere) Beiträge stehen oben und werden übersprungen, ohne abzubrechen.
+    """
+    d = date_min
+    return (f"date >= datetime({d.year}, {d.month}, {d.day}) or "
+            "(False if locals().get('pinned') else abort())")
+
+
 def run_gallery_dl(url: str, dest: Path, cookies: Path, archive: Path,
-                   date_min: datetime | None = None) -> subprocess.CompletedProcess:
+                   date_min: datetime | None = None, job: JobContext | None = None,
+                   note: str = "", timeout: float | None = None) -> subprocess.CompletedProcess:
+    """gallery-dl als eigenen Prozess starten; Fortschritt melden, Abbruch ermöglichen."""
     cmd = [
         sys.executable, "-m", "gallery_dl",
         "--cookies", str(cookies),
@@ -49,9 +63,34 @@ def run_gallery_dl(url: str, dest: Path, cookies: Path, archive: Path,
     if config.SOCIAL_USER_AGENT:
         cmd += ["--user-agent", config.SOCIAL_USER_AGENT]
     if date_min is not None:
-        cmd += ["--filter", f"date >= datetime({date_min.year}, {date_min.month}, {date_min.day})"]
+        cmd += ["--filter", date_filter(date_min)]
     cmd.append(url)
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=config.SOCIAL_TIMEOUT)
+    timeout = timeout or config.SOCIAL_TIMEOUT
+    out_path, err_path = dest / ".stdout.log", dest / ".stderr.log"
+    with open(out_path, "w") as out, open(err_path, "w") as err:
+        proc = subprocess.Popen(cmd, stdout=out, stderr=err, text=True)
+        started = time.monotonic()
+        try:
+            while True:
+                try:
+                    proc.wait(timeout=3)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
+                if time.monotonic() - started > timeout:
+                    proc.kill()
+                    proc.wait()
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                if job is not None:
+                    n = sum(1 for _ in dest.rglob("*.json"))
+                    job.progress(None, f"{note} – {n} Datei{'en' if n != 1 else ''} geladen")
+        except BaseException:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            raise
+    return subprocess.CompletedProcess(cmd, proc.returncode, out_path.read_text(errors="replace"),
+                                       err_path.read_text(errors="replace"))
 
 
 def classify(proc: subprocess.CompletedProcess) -> str | None:
@@ -69,11 +108,28 @@ def classify(proc: subprocess.CompletedProcess) -> str | None:
     return "error"
 
 
+def _plan(acc, options: dict) -> tuple[list[tuple[str, str, datetime | None]], bool]:
+    """Was soll abgerufen werden? (Art, URL, ab-Datum) und ob es ein Archiv-Auftrag ist."""
+    backfill = options.get("backfill")
+    if backfill:
+        sel = dict(acc)
+        sel.update({"stories": int(bool(backfill.get("stories"))),
+                    "highlights": int(bool(backfill.get("highlights"))),
+                    "posts": int(bool(backfill.get("posts")))})
+        since = backfill.get("since")
+        since_dt = datetime.fromisoformat(since).replace(tzinfo=timezone.utc) if since else None
+        return [(k, u, since_dt if k == "posts" else None) for k, u in social.content_urls(sel)], True
+    created = datetime.fromisoformat(acc["created_at"].replace("Z", "+00:00"))
+    # Laufende Beobachtung: Beiträge erst ab kurz vor Beobachtungsbeginn
+    return [(k, u, created - timedelta(days=3) if k == "posts" else None)
+            for k, u in social.content_urls(acc)], False
+
+
 def check_account(source_id, job: JobContext):
     account_id = job.options.get("account_id")
     with connection() as conn:
         acc = social.get_account(conn, account_id)
-    if acc is None or not acc["active"]:
+    if acc is None or (not acc["active"] and not job.options.get("backfill")):
         return None
     platform, handle = acc["platform"], acc["handle"]
     label = f"{social.PLATFORMS[platform]} @{handle}"
@@ -84,25 +140,29 @@ def check_account(source_id, job: JobContext):
                                 "Unter Einstellungen die Cookies des Recherche-Kontos hochladen.", 0)
         return None
 
-    tmp = config.DATA_DIR / "tmp" / f"account-{account_id}-{int(time.time())}"
-    archive = config.DATA_DIR / "social-archive.sqlite3"
+    plan, is_backfill = _plan(acc, job.options)
+    tmp = config.DATA_DIR / "tmp" / f"account-{account_id}-{job.id or 0}-{int(time.time())}"
+    # Archiv je Recherche: derselbe Account kann in mehreren Recherchen beobachtet werden
+    archive = config.DATA_DIR / "social-archive" / f"projekt-{acc['project_id']}.sqlite3"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    timeout = config.SOCIAL_BACKFILL_TIMEOUT if is_backfill else config.SOCIAL_TIMEOUT
     new_items = 0
     problems: list[str] = []
     auth_failed = False
-    created = datetime.fromisoformat(acc["created_at"].replace("Z", "+00:00"))
     try:
-        for kind, url in social.content_urls(acc):
-            job.progress(None, f"{label}: {KIND_LABEL[kind]}s abrufen", force=True)
+        for kind, url, date_min in plan:
+            note = f"{label}: {'Archiv – ' if is_backfill else ''}{KIND_LABEL[kind]}s"
+            job.progress(None, note, force=True)
             dest = tmp / kind
             dest.mkdir(parents=True, exist_ok=True)
-            # Beiträge erst ab kurz vor Beobachtungsbeginn – sonst käme das ganze Profil
-            date_min = created - timedelta(days=3) if kind == "posts" else None
             try:
-                proc = run_gallery_dl(url, dest, cookies, archive, date_min)
+                proc = run_gallery_dl(url, dest, cookies, archive, date_min, job=job, note=note,
+                                      timeout=timeout)
+                problem = classify(proc)
             except subprocess.TimeoutExpired:
-                problems.append(f"{KIND_LABEL[kind]}: Zeitüberschreitung")
-                continue
-            problem = classify(proc)
+                proc, problem = None, None
+                problems.append(f"{KIND_LABEL[kind]}: Zeitlimit erreicht – bisher Geladenes ist gesichert, "
+                                "erneut starten setzt fort")
             if problem == "auth":
                 auth_failed = True
             if problem and problem != "error":
@@ -112,15 +172,19 @@ def check_account(source_id, job: JobContext):
             elif problem == "error" and not any(dest.rglob("*.json")):
                 last = (proc.stderr.strip().splitlines() or ["unbekannter Fehler"])[-1]
                 problems.append(f"{KIND_LABEL[kind]}: {last[:200]}")
+            # Auch nach Zeitlimit oder Teilfehlern: alles Vollständige übernehmen
             new_items += import_downloads(acc, kind, dest)
             job.check_cancel()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
+    prefix = "Archiv: " if is_backfill else ""
     if problems:
-        status = "; ".join(dict.fromkeys(problems))
+        status = prefix + "; ".join(dict.fromkeys(problems))
+        if new_items:
+            status += f" ({new_items} neu gesichert)"
     else:
-        status = f"{new_items} neu" if new_items else "nichts Neues"
+        status = prefix + (f"{new_items} neu" if new_items else "nichts Neues")
     with connection() as conn:
         previous = social.get_account(conn, account_id)["last_status"]
         social.record_check(conn, account_id, status, status if problems else None, new_items)

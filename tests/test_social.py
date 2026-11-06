@@ -79,10 +79,12 @@ class FakeGalleryDL:
 
     def __init__(self):
         self.calls = []
+        self.archives = set()
         self.fail = None
 
-    def __call__(self, url, dest, cookies, archive, date_min=None):
+    def __call__(self, url, dest, cookies, archive, date_min=None, **kw):
         self.calls.append((url, date_min))
+        self.archives.add(str(archive))
         if self.fail:
             return subprocess.CompletedProcess([], 1, "", self.fail)
         if "/stories/" in url:
@@ -93,6 +95,12 @@ class FakeGalleryDL:
             (dest / "story2.jpg").write_bytes(b"\xff\xd8bild")
             (dest / "story2.jpg.json").write_text(json.dumps({
                 "media_id": "3413", "num": 1, "date": "2026-11-06 20:00:00", "description": "Pegel heute"}))
+        if url.endswith("/posts/"):
+            for i, day in enumerate(["2026-10-01", "2025-03-15"]):
+                (dest / f"post{i}.jpg").write_bytes(b"\xff\xd8")
+                (dest / f"post{i}.jpg.json").write_text(json.dumps({
+                    "media_id": f"9{i}", "post_shortcode": f"AbC{i}", "date": f"{day} 12:00:00",
+                    "description": f"Beitrag {i}"}))
         return subprocess.CompletedProcess([], 0, "", "")
 
 
@@ -116,15 +124,15 @@ def test_check_imports_stories_once(client, fake_gdl):
         video = srcs[0]
         arts = [a["kind"] for a in evidence.artifacts_for(conn, evidence.list_versions(conn, video["id"])[0]["id"])]
         tags = repo.source_tags(conn, [video["id"]])[video["id"]]
-    assert [s["kind"] for s in srcs] == ["video", "image"]
+    assert [s["kind"] for s in srcs] == ["video", "image", "image", "image"]  # 2 Stories, 2 Beiträge
     assert video["title"].startswith("Instagram-Story von @stadt_augsburg, 06.11.2026")
     assert video["url"] == "https://www.instagram.com/stories/stadt_augsburg/3412/"
     assert video["published_at"] == "2026-11-06" and video["external_id"] == "instagram:3412:1"
     assert video["media_path"].endswith("v1/stories.mp4") and srcs[1]["media_path"] is None
     assert srcs[1]["description"] == "Pegel heute"
     assert arts == ["media", "metadata"] and set(tags) == {"Story", "@stadt_augsburg"}
-    assert jobs.count("seal") == 2 and jobs.count("transcribe") == 1
-    assert acc["last_status"] == "2 neu" and acc["item_count"] == 2
+    assert jobs.count("seal") == 4 and jobs.count("transcribe") == 1
+    assert acc["last_status"] == "4 neu" and acc["item_count"] == 4
     # Beiträge nur ab kurz vor Beobachtungsbeginn
     posts_call = [c for c in fake_gdl.calls if c[0].endswith("/posts/")][0]
     assert posts_call[1] is not None
@@ -134,11 +142,11 @@ def test_check_imports_stories_once(client, fake_gdl):
         social.enqueue_check(conn, acc["id"])
     worker.drain()
     with connection() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 4
         assert conn.execute("SELECT last_status FROM watched_accounts").fetchone()[0] == "nichts Neues"
 
     page = client.get(f"/p/{pid}/accounts").text
-    assert "2 gesichert" in page and "nichts Neues" in page
+    assert "4 gesichert" in page and "nichts Neues" in page
     assert client.get(f"/s/{srcs[1]['id']}").status_code == 200
 
 
@@ -185,3 +193,74 @@ def test_delete_account_keeps_sources(client, fake_gdl):
     with connection() as conn:
         assert conn.execute("SELECT COUNT(*) FROM watched_accounts").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM sources WHERE account_id IS NULL").fetchone()[0] == 2
+
+
+def test_date_filter_stops_at_older_posts():
+    from datetime import datetime
+
+    from gallery_dl import exception, util
+
+    f = util.compile_filter(accounts.date_filter(datetime(2026, 1, 1)))
+    assert f({"date": datetime(2026, 5, 1)}) is True
+    assert not f({"date": datetime(2020, 1, 1), "pinned": (123,)})  # angeheftet: überspringen
+    with pytest.raises(exception.StopExtraction):
+        f({"date": datetime(2025, 12, 31), "pinned": ()})
+    with pytest.raises(exception.StopExtraction):
+        f({"date": datetime(2025, 12, 31)})  # TikTok: kein pinned-Feld
+
+
+def test_add_with_history_and_backfill_button(client, fake_gdl):
+    pid = _project(client)
+    r = client.post(f"/p/{pid}/accounts", data={
+        "platform": "instagram", "handle": "stadt_augsburg", "stories": "1",
+        "history": "since", "history_since": "2026-01-01", "history_highlights": "1"},
+        follow_redirects=True)
+    assert "In der Warteschlange (inkl. Archiv)" in r.text
+    worker.drain()
+    with connection() as conn:
+        titles = [r["title"] for r in conn.execute("SELECT title FROM sources ORDER BY id")]
+        acc = conn.execute("SELECT * FROM watched_accounts").fetchone()
+    urls = [c[0] for c in fake_gdl.calls]
+    # 1. Abruf: Stories; 2. Archiv: Highlights + Beiträge ab Datum
+    assert urls == ["https://www.instagram.com/stories/stadt_augsburg/",
+                    "https://www.instagram.com/stadt_augsburg/highlights/",
+                    "https://www.instagram.com/stadt_augsburg/posts/"]
+    assert fake_gdl.calls[2][1].strftime("%Y-%m-%d") == "2026-01-01"
+    assert fake_gdl.calls[1][1] is None
+    assert len(titles) == 4 and any(t.startswith("Instagram-Beitrag von @stadt_augsburg") for t in titles)
+    assert acc["last_status"] == "Archiv: 2 neu"
+
+    # Archiv-Knopf: alle Beiträge
+    fake_gdl.calls.clear()
+    client.post(f"/accounts/{acc['id']}/backfill", data={"posts": "1", "posts_mode": "all"})
+    worker.drain()
+    assert fake_gdl.calls == [("https://www.instagram.com/stadt_augsburg/posts/", None)]
+    with connection() as conn:
+        src = conn.execute("SELECT url FROM sources WHERE title LIKE '%Beitrag%' ORDER BY id").fetchone()
+        assert src["url"] == "https://www.instagram.com/p/AbC0/"
+    # Datum fehlt → Hinweis
+    r = client.post(f"/accounts/{acc['id']}/backfill", data={"posts": "1", "posts_mode": "since"},
+                    follow_redirects=True)
+    assert "Bitte ein Datum angeben" in r.text
+
+
+def test_archive_is_per_project(client, fake_gdl):
+    for name in ("A", "B"):
+        r = client.post("/projects", data={"name": name}, follow_redirects=False)
+        pid = int(r.headers["location"].rsplit("/", 1)[-1])
+        client.post(f"/p/{pid}/accounts", data={"platform": "instagram", "handle": "x", "stories": "1"})
+    worker.drain()
+    assert len(fake_gdl.archives) == 2
+    with connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 4  # je Recherche 2
+
+
+def test_run_gallery_dl_real_process(app_env, tmp_path):
+    """Echter gallery-dl-Prozess (ohne Netz): Ausgabe wird eingesammelt, nichts hängt."""
+    cookies = tmp_path / "c.txt"
+    cookies.write_text(COOKIES)
+    dest = tmp_path / "out"
+    dest.mkdir()
+    proc = accounts.run_gallery_dl("https://example.invalid/kein-extractor", dest, cookies,
+                                   tmp_path / "a.sqlite3", timeout=60)
+    assert proc.returncode != 0 or proc.stdout or proc.stderr is not None

@@ -279,13 +279,23 @@ def project_accounts(request: Request, pid: int, msg: str = ""):
 def add_account(pid: int, platform: str = Form(...), handle: str = Form(...),
                 stories: str | None = Form(None), highlights: str | None = Form(None),
                 posts: str | None = Form(None), transcribe: str | None = Form(None),
-                interval_hours: float = Form(3)):
+                interval_hours: float = Form(3), history: str = Form("none"),
+                history_since: str = Form(""), history_highlights: str | None = Form(None)):
     try:
         with db.connection() as conn:
             aid = social.add_account(conn, pid, platform, handle, stories=bool(stories),
                                      highlights=bool(highlights), posts=bool(posts),
                                      transcribe=bool(transcribe), interval_hours=interval_hours)
+            # Erster Abruf: alle aktuell sichtbaren Stories (+ gewählte Inhalte)
             social.enqueue_check(conn, aid)
+            # Optional: Archiv nachladen
+            if history in ("since", "all") or history_highlights:
+                if history == "since" and not history_since:
+                    raise ValueError("Bitte ein Datum für „bisherige Beiträge ab“ angeben")
+                social.enqueue_backfill(
+                    conn, aid, posts=history in ("since", "all"),
+                    highlights=bool(history_highlights) and not highlights and platform == "instagram",
+                    since=history_since if history == "since" else None)
     except ValueError as e:
         return back(f"/p/{pid}/accounts", msg=str(e))
     worker.wake()
@@ -308,6 +318,24 @@ def edit_account(aid: int, stories: str | None = Form(None), highlights: str | N
                               posts=int(bool(posts)), transcribe=int(bool(transcribe)),
                               interval_hours=interval_hours)
     return back(f"/p/{a['project_id']}/accounts", msg="Gespeichert")
+
+
+@app.post("/accounts/{aid}/backfill")
+def account_backfill(aid: int, stories: str | None = Form(None), highlights: str | None = Form(None),
+                     posts: str | None = Form(None), posts_mode: str = Form("since"),
+                     since: str = Form("")):
+    with db.connection() as conn:
+        a = _account_or_404(conn, aid)
+        try:
+            if posts and posts_mode == "since" and not since:
+                raise ValueError("Bitte ein Datum angeben oder „alle“ wählen")
+            social.enqueue_backfill(conn, aid, stories=bool(stories), highlights=bool(highlights),
+                                    posts=bool(posts), since=since if posts_mode == "since" else None)
+        except ValueError as e:
+            return back(f"/p/{a['project_id']}/accounts", msg=str(e))
+    worker.wake()
+    return back(f"/p/{a['project_id']}/accounts",
+                msg=f"Archiv von @{a['handle']} wird nachgeladen – das kann je nach Umfang dauern.")
 
 
 @app.post("/accounts/{aid}/{action}")
