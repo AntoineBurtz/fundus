@@ -26,7 +26,11 @@ Selbst gehostete Plattform zum **Sammeln, Sichern, Einordnen und Darstellen** vo
 
 ## Starten
 
-### Docker (z. B. Unraid)
+### Unraid
+
+Siehe **[docs/UNRAID.md](docs/UNRAID.md)** – Installation über eine Vorlage mit automatischen Updates aus der GitHub Container Registry.
+
+### Docker Compose
 
 ```bash
 docker compose up -d --build
