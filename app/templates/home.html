@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Projekte{% endblock %}
+{% block content %}
+<section class="home">
+  <div class="home-head">
+    <h1>Recherchen</h1>
+    <p class="lede">Quellen sammeln, sichern, transkribieren, markieren und zeitlich einordnen.</p>
+  </div>
+
+  <div class="home-grid">
+    <div class="project-list">
+      {% for p in projects %}
+      <a class="project-card" href="/p/{{ p.id }}">
+        <h2>{{ p.name }}</h2>
+        {% if p.description %}<p>{{ p.description }}</p>{% endif %}
+        <div class="meta">
+          <span>{{ p.source_count }} Quelle{{ 'n' if p.source_count != 1 }}</span>
+          <span>{{ p.highlight_count }} Markierung{{ 'en' if p.highlight_count != 1 }}</span>
+          {% if p.last_activity %}<span>zuletzt {{ p.last_activity|hdatetime }}</span>{% endif %}
+        </div>
+      </a>
+      {% else %}
+      <div class="empty">
+        <p>Noch keine Recherche angelegt. Fang rechts mit einem Projekt an.</p>
+      </div>
+      {% endfor %}
+    </div>
+
+    <aside class="side">
+      <form class="panel" method="post" action="/projects">
+        <h3>Neue Recherche</h3>
+        <label>Name<input name="name" required placeholder="z. B. Recherche Wasserrechte Lech"></label>
+        <label>Worum geht's?<textarea name="description" rows="3" placeholder="Fragestellung, Auftrag, Abgabetermin …"></textarea></label>
+        <button class="btn primary">Anlegen</button>
+      </form>
+
+      <div class="panel subtle">
+        <h3>Schnell erfassen</h3>
+        <p>Diesen Link in die Lesezeichenleiste ziehen. Ein Klick auf einer beliebigen Seite speichert sie in Fundus.</p>
+        <a class="bookmarklet" id="bookmarklet" href="#">+ In Fundus sichern</a>
+        <p class="hint">Am Handy: Link teilen → Browser öffnen mit <code>/add?url=…</code></p>
+      </div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  const bm = document.getElementById('bookmarklet');
+  const base = location.origin;
+  bm.href = "javascript:(function(){window.open('" + base + "/add?url='+encodeURIComponent(location.href)+'&title='+encodeURIComponent(document.title),'fundus','width=520,height=640');})();";
+  bm.addEventListener('click', e => { e.preventDefault(); bm.textContent = '↑ in die Lesezeichenleiste ziehen'; });
+</script>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Schnell sichern{% endblock %}
+{% block bodyclass %}compact{% endblock %}
+{% block content %}
+<form class="panel quick" method="post" action="/add">
+  <h2>In Fundus sichern</h2>
+  {% if title %}<p class="lede">{{ title }}</p>{% endif %}
+  <label>Link<input name="url" value="{{ url }}" required></label>
+  <label>Recherche
+    <select name="project_id">
+      {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>… oder neue Recherche<input name="new_project" placeholder="Name der neuen Recherche"></label>
+  <label>Art
+    <select name="mode">
+      <option value="auto">Automatisch erkennen</option>
+      <option value="web">Webseite</option>
+      <option value="media">Video/Audio + Transkript</option>
+    </select>
+  </label>
+  <label>Tags<input name="tags" placeholder="Komma-getrennt"></label>
+  <button class="btn primary">Sichern</button>
+</form>
+{% endblock %}

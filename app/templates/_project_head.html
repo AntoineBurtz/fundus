@@ -1,0 +1,28 @@
+<header class="project-head">
+  <div class="ph-title">
+    <h1>{{ project.name }}</h1>
+    {% if project.description %}<p class="lede">{{ project.description }}</p>{% endif %}
+  </div>
+  <div class="ph-actions">
+    <a class="btn ghost" href="/p/{{ project.id }}/export.md" title="Alle Quellen und Markierungen als Markdown">Dossier exportieren</a>
+    <details class="menu">
+      <summary class="btn ghost" aria-label="Projekt bearbeiten">…</summary>
+      <div class="menu-body">
+        <form method="post" action="/p/{{ project.id }}/edit">
+          <label>Name<input name="name" value="{{ project.name }}" required></label>
+          <label>Beschreibung<textarea name="description" rows="3">{{ project.description }}</textarea></label>
+          <button class="btn">Speichern</button>
+        </form>
+        <form method="post" action="/p/{{ project.id }}/delete" class="danger-zone">
+          <label>Löschen: Projektnamen eingeben<input name="confirm" autocomplete="off"></label>
+          <button class="btn danger">Projekt endgültig löschen</button>
+        </form>
+      </div>
+    </details>
+  </div>
+</header>
+<nav class="tabs">
+  <a href="/p/{{ project.id }}" class="{{ 'on' if tab == 'sources' }}">Quellen</a>
+  <a href="/p/{{ project.id }}/timeline" class="{{ 'on' if tab == 'timeline' }}">Zeitstrahl</a>
+  <a href="/p/{{ project.id }}/highlights" class="{{ 'on' if tab == 'highlights' }}">Markierungen</a>
+</nav>

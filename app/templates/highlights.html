@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Markierungen · {{ project.name }}{% endblock %}
+{% block crumbs %}<a href="/">Recherchen</a><span>/</span><a href="/p/{{ project.id }}">{{ project.name }}</a><span>/</span><b>Markierungen</b>{% endblock %}
+{% block content %}
+{% include "_project_head.html" %}
+
+<div class="timeline-controls">
+  <a class="chip {{ 'on' if not f.color }}" href="?tag={{ f.tag|urlencode }}">Alle</a>
+  {% for c, label in COLORS.items() %}
+  <a class="chip swatch c-{{ c|cslug }} {{ 'on' if f.color == c }}" href="?color={{ c|urlencode }}&tag={{ f.tag|urlencode }}">{{ label }}</a>
+  {% endfor %}
+  {% if f.tag %}<a class="chip on" href="?color={{ f.color|urlencode }}">#{{ f.tag }} ✕</a>{% endif %}
+</div>
+
+<div class="hl-wall">
+  {% for h in highlights %}
+  <article class="hl-card c-{{ h.color|cslug }}">
+    <a class="hl-quote" href="/s/{{ h.source_id }}?h={{ h.id }}{% if h.media_time is not none %}&t={{ h.media_time }}{% endif %}#hl-{{ h.id }}">
+      <blockquote>{{ h.quote|truncate(600) }}</blockquote>
+    </a>
+    {% if h.note %}<p class="hl-note">{{ h.note }}</p>{% endif %}
+    <footer>
+      <span class="src"><span class="kind-badge">{{ KINDS[h.source_kind] }}</span> {{ h.source_title or 'Ohne Titel' }}</span>
+      {% if h.media_time is not none %}<span>{{ h.media_time|timecode }}</span>{% endif %}
+      {% if h.event_date %}<span>betrifft {{ h.event_date|hdate }}</span>{% endif %}
+      {% for t in htags[h.id] %}<a href="?tag={{ t|urlencode }}&color={{ f.color|urlencode }}">#{{ t }}</a>{% endfor %}
+      <button class="copy-cite" type="button"
+        data-cite="„{{ h.quote }}“ — {{ h.source_author ~ ', ' if h.source_author }}{{ h.source_title }}{{ ', ' ~ h.source_site if h.source_site }}{{ ', ' ~ (h.source_published|hdate) if h.source_published }}{{ ' [' ~ (h.media_time|timecode) ~ ']' if h.media_time is not none }}{{ ', ' ~ h.source_url if h.source_url }}">Zitat kopieren</button>
+    </footer>
+  </article>
+  {% else %}
+  <p class="empty">Noch keine Markierungen. Öffne eine Quelle und markiere Textstellen mit der Maus.</p>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }}{% endblock %}
+{% block crumbs %}<a href="/">Recherchen</a><span>/</span><b>{{ project.name }}</b>{% endblock %}
+{% block content %}
+{% include "_project_head.html" %}
+
+<section class="adder" data-tabs>
+  <div class="adder-tabs" role="tablist">
+    <button type="button" class="on" data-tab="url">Link</button>
+    <button type="button" data-tab="file">Datei</button>
+    <button type="button" data-tab="note">Notiz</button>
+  </div>
+
+  <form class="adder-pane on" data-pane="url" method="post" action="/p/{{ project.id }}/sources/url">
+    <input class="big" name="url" type="text" required placeholder="https://… Webseite, YouTube-Video, Podcast-Folge, MP3 …" autofocus>
+    <div class="row">
+      <select name="mode" aria-label="Art">
+        <option value="auto">Automatisch erkennen</option>
+        <option value="web">Als Webseite sichern</option>
+        <option value="media">Als Video/Audio laden + transkribieren</option>
+      </select>
+      <input name="event_date" placeholder="Betrifft (Datum, optional)" title="z. B. 2019, 03.2019 oder 12.03.2019">
+      <input name="tags" placeholder="Tags, durch Komma getrennt">
+      <button class="btn primary">Sichern</button>
+    </div>
+  </form>
+
+  <form class="adder-pane" data-pane="file" method="post" action="/p/{{ project.id }}/sources/upload" enctype="multipart/form-data">
+    <label class="drop">
+      <input type="file" name="files" multiple required>
+      <span>PDF, Word, Text, HTML, Audio, Video oder Bilder hierher ziehen oder auswählen</span>
+    </label>
+    <div class="row">
+      <input name="event_date" placeholder="Betrifft (Datum, optional)">
+      <input name="tags" placeholder="Tags, durch Komma getrennt">
+      <button class="btn primary">Hochladen</button>
+    </div>
+  </form>
+
+  <form class="adder-pane" data-pane="note" method="post" action="/p/{{ project.id }}/sources/note">
+    <input name="title" required placeholder="Titel, z. B. Telefonat mit Pressestelle">
+    <textarea name="text" rows="5" placeholder="Gesprächsnotiz, Beobachtung, Hypothese …"></textarea>
+    <div class="row">
+      <input name="event_date" placeholder="Betrifft (Datum, optional)">
+      <input name="tags" placeholder="Tags, durch Komma getrennt">
+      <button class="btn primary">Notiz speichern</button>
+    </div>
+  </form>
+</section>
+
+<div class="listing">
+  <form class="filters" method="get">
+    <select name="kind" onchange="this.form.submit()" aria-label="Art">
+      <option value="">Alle Arten</option>
+      {% for k, label in KINDS.items() %}<option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="status" onchange="this.form.submit()" aria-label="Status">
+      <option value="">Jeder Status</option>
+      {% for st in STATUSES %}<option {{ 'selected' if f.status == st }}>{{ st }}</option>{% endfor %}
+    </select>
+    <select name="order" onchange="this.form.submit()" aria-label="Sortierung">
+      <option value="captured" {{ 'selected' if f.order == 'captured' }}>Zuletzt gesichert</option>
+      <option value="event" {{ 'selected' if f.order == 'event' }}>Nach Datum (betrifft)</option>
+      <option value="title" {{ 'selected' if f.order == 'title' }}>Nach Titel</option>
+    </select>
+    {% if f.tag %}<input type="hidden" name="tag" value="{{ f.tag }}"><a class="chip on" href="?kind={{ f.kind }}&status={{ f.status }}&order={{ f.order }}">#{{ f.tag }} ✕</a>{% endif %}
+    <span class="count">{{ sources|length }} Quelle{{ 'n' if sources|length != 1 }}</span>
+  </form>
+
+  {% if tags %}
+  <div class="tagcloud">
+    {% for t in tags %}<a class="chip {{ 'on' if f.tag == t.name }}" href="?tag={{ t.name|urlencode }}&kind={{ f.kind }}&status={{ f.status }}&order={{ f.order }}">#{{ t.name }} <small>{{ t.n }}</small></a>{% endfor %}
+  </div>
+  {% endif %}
+
+  <ol class="sources" {% if busy %}data-autorefresh="5"{% endif %}>
+    {% for s in sources %}
+    <li class="source-row kind-{{ s.kind }} state-{{ s.state }}">
+      <a href="/s/{{ s.id }}" class="sr-main">
+        <span class="kind-badge">{{ KINDS[s.kind] }}</span>
+        <h3>{{ s.title or s.url or 'Ohne Titel' }}</h3>
+        <div class="meta">
+          {% if s.site_name or s.url %}<span>{{ s.site_name or (s.url|domain) }}</span>{% endif %}
+          {% if s.author %}<span>{{ s.author }}</span>{% endif %}
+          {% if s.published_at %}<span title="veröffentlicht">veröff. {{ s.published_at|hdate }}</span>{% endif %}
+          {% if s.duration %}<span>{{ s.duration|timecode }}</span>{% endif %}
+          {% if s.highlight_count %}<span class="hlc">{{ s.highlight_count }} Markierung{{ 'en' if s.highlight_count != 1 }}</span>{% endif %}
+        </div>
+        {% if s.state in ('wartet', 'läuft') %}<div class="progress">{{ 'Wird verarbeitet …' if s.state == 'läuft' else 'In der Warteschlange …' }}</div>{% endif %}
+        {% if s.state == 'fehler' %}<div class="error-line">Fehler: {{ s.error }}</div>{% endif %}
+      </a>
+      <div class="sr-side">
+        {% if s.event_date %}<div class="event-date" title="betrifft">{{ s.event_date|hdate }}{% if s.event_date_end %} – {{ s.event_date_end|hdate }}{% endif %}</div>{% endif %}
+        <span class="status st-{{ s.status|replace(' ', '-') }}">{{ s.status }}</span>
+        <div class="tags">{% for t in stags[s.id] %}<a href="?tag={{ t|urlencode }}">#{{ t }}</a>{% endfor %}</div>
+      </div>
+    </li>
+    {% else %}
+    <li class="empty">Noch keine Quellen{% if f.kind or f.status or f.tag %} für diesen Filter{% endif %}. Füge oben einen Link, eine Datei oder eine Notiz hinzu.</li>
+    {% endfor %}
+  </ol>
+</div>
+{% endblock %}

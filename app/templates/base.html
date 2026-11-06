@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Fundus{% endblock %} · Fundus</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23202124'/><path d='M9 8h14v3H12.5v4H21v3h-8.5v6H9z' fill='%23f3efe6'/></svg>">
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+<header class="topbar">
+  <a class="brand" href="/"><span class="brand-mark">F</span>Fundus</a>
+  <nav class="crumbs">{% block crumbs %}{% endblock %}</nav>
+  <form class="topsearch" action="/search" method="get" role="search">
+    {% if project %}<input type="hidden" name="project" value="{{ project.id }}">{% endif %}
+    <input type="search" name="q" value="{{ q or '' }}" placeholder="{% if project %}In „{{ project.name }}“ suchen …{% else %}Alles durchsuchen …{% endif %}" aria-label="Suche">
+  </form>
+</header>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+<main class="{% block mainclass %}wrap{% endblock %}">
+{% block content %}{% endblock %}
+</main>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

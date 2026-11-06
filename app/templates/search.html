@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Suche{% endblock %}
+{% block crumbs %}<a href="/">Recherchen</a>{% if project %}<span>/</span><a href="/p/{{ project.id }}">{{ project.name }}</a>{% endif %}<span>/</span><b>Suche</b>{% endblock %}
+{% block content %}
+<form class="searchpage" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Suchbegriffe, &quot;genaue Phrase&quot;, -ausschließen, A OR B" autofocus>
+  <select name="project" aria-label="Projekt">
+    <option value="">Alle Recherchen</option>
+    {% for p in projects %}<option value="{{ p.id }}" {{ 'selected' if project_id == p.id }}>{{ p.name }}</option>{% endfor %}
+  </select>
+  <button class="btn primary">Suchen</button>
+</form>
+
+{% if q %}
+<p class="count">{{ results|length }} Treffer{% if results|length >= 100 %} (die ersten 100){% endif %}</p>
+<ol class="results">
+  {% for r in results %}
+  <li class="result rk-{{ r.kind }}">
+    <a href="{{ r.href }}">
+      <div class="r-head">
+        <span class="kind-badge">{{ {'source': KINDS[r.source_kind], 'segment': 'Transkript', 'highlight': 'Markierung'}[r.kind] }}</span>
+        <b>{{ r.title_hl|snippet }}</b>
+        {% if r.time is not none %}<span class="tcode">{{ r.time|timecode }}</span>{% endif %}
+      </div>
+      <p class="snip {% if r.kind == 'highlight' %}quote c-{{ (r.color or 'gelb')|cslug }}{% endif %}">{{ r.snippet|snippet }}</p>
+      {% if not project %}<span class="soft">{{ r.project_name }}</span>{% endif %}
+    </a>
+  </li>
+  {% else %}
+  <li class="empty">Nichts gefunden. Tipp: Wortanfänge reichen („Genehm“ findet „Genehmigung“).</li>
+  {% endfor %}
+</ol>
+{% endif %}
+{% endblock %}

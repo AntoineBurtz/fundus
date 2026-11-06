@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Zeitstrahl · {{ project.name }}{% endblock %}
+{% block crumbs %}<a href="/">Recherchen</a><span>/</span><a href="/p/{{ project.id }}">{{ project.name }}</a><span>/</span><b>Zeitstrahl</b>{% endblock %}
+{% block content %}
+{% include "_project_head.html" %}
+
+<div class="timeline-controls">
+  <span>Einordnen nach</span>
+  <a class="chip {{ 'on' if basis == 'event' }}" href="?basis=event" title="Worauf sich der Inhalt bezieht (sonst Veröffentlichung)">Ereignisdatum</a>
+  <a class="chip {{ 'on' if basis == 'published' }}" href="?basis=published">Veröffentlichung</a>
+  <a class="chip {{ 'on' if basis == 'captured' }}" href="?basis=captured">Sicherung</a>
+</div>
+
+{% if not groups %}
+<p class="empty">Noch keine Einträge. Datumsangaben kommen automatisch aus den Quellen oder lassen sich bei jeder Quelle und Markierung eintragen.</p>
+{% endif %}
+
+<div class="timeline">
+  {% for g in groups %}
+  <section class="tl-group {{ 'undated' if g.key == 'Ohne Datum' }}">
+    <h2 class="tl-year">{{ g.key }}</h2>
+    <ol>
+      {% for e in g.entries %}
+      {% if e.type == 'source' %}
+      <li class="tl-item kind-{{ e.kind }}">
+        <time>{{ e.date|hdate if e.date else '—' }}{% if basis == 'event' and e.event_date_end %} – {{ e.event_date_end|hdate }}{% endif %}</time>
+        <div class="tl-body">
+          <a href="/s/{{ e.id }}"><span class="kind-badge">{{ KINDS[e.kind] }}</span> {{ e.title or 'Ohne Titel' }}</a>
+          <div class="meta">
+            {% if e.site_name %}<span>{{ e.site_name }}</span>{% endif %}
+            {% if e.author %}<span>{{ e.author }}</span>{% endif %}
+            {% if basis == 'event' and not e.event_date and e.published_at %}<span class="soft">Datum = Veröffentlichung</span>{% endif %}
+            {% if e.highlight_count %}<span class="hlc">{{ e.highlight_count }} Markierung{{ 'en' if e.highlight_count != 1 }}</span>{% endif %}
+            <span class="status st-{{ e.status|replace(' ', '-') }}">{{ e.status }}</span>
+          </div>
+        </div>
+      </li>
+      {% else %}
+      <li class="tl-item tl-hl">
+        <time>{{ e.date|hdate }}</time>
+        <div class="tl-body">
+          <a href="/s/{{ e.source_id }}?h={{ e.id }}{% if e.media_time is not none %}&t={{ e.media_time }}{% endif %}#hl-{{ e.id }}">
+            <blockquote class="quote c-{{ e.color|cslug }}">{{ e.quote|truncate(320) }}</blockquote>
+          </a>
+          <div class="meta">{% if e.note %}<span>{{ e.note }}</span>{% endif %}<span>aus: {{ e.source_title }}</span></div>
+        </div>
+      </li>
+      {% endif %}
+      {% endfor %}
+    </ol>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

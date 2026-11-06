@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}{{ s.title or 'Quelle' }}{% endblock %}
+{% block mainclass %}wrap wide{% endblock %}
+{% block crumbs %}<a href="/">Recherchen</a><span>/</span><a href="/p/{{ project.id }}">{{ project.name }}</a><span>/</span><b>{{ (s.title or 'Quelle')|truncate(48) }}</b>{% endblock %}
+{% block content %}
+<div class="source-layout" data-source="{{ s.id }}" data-state="{{ s.state }}" {% if start_time is not none %}data-start="{{ start_time }}"{% endif %} {% if focus %}data-focus="{{ focus }}"{% endif %}>
+
+  <article class="doc">
+    <header class="doc-head">
+      <span class="kind-badge">{{ KINDS[s.kind] }}</span>
+      <h1>{{ s.title or s.url or 'Ohne Titel' }}</h1>
+      <div class="meta">
+        {% if s.site_name %}<span>{{ s.site_name }}</span>{% endif %}
+        {% if s.author %}<span>{{ s.author }}</span>{% endif %}
+        {% if s.published_at %}<span>veröffentlicht {{ s.published_at|hdate }}</span>{% endif %}
+        {% if s.event_date %}<span class="event-date">betrifft {{ s.event_date|hdate }}{% if s.event_date_end %} – {{ s.event_date_end|hdate }}{% endif %}</span>{% endif %}
+        <span title="Zeitpunkt der Sicherung">gesichert {{ s.captured_at|hdatetime }}</span>
+        {% if s.duration %}<span>{{ s.duration|timecode }}</span>{% endif %}
+        {% if s.language %}<span>{{ s.language }}</span>{% endif %}
+      </div>
+      <div class="doc-links">
+        {% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">Original öffnen ↗</a>{% endif %}
+        {% if s.snapshot_path and s.kind in ('web', 'document', 'image') %}<a href="/s/{{ s.id }}/snapshot" target="_blank">Gesicherte Kopie</a>{% endif %}
+        {% if s.media_path %}<a href="/files/{{ s.media_path }}" download>Mediendatei</a>{% endif %}
+        {% if s.kind == 'web' and s.url %}<form method="post" action="/s/{{ s.id }}/run/media"><button class="linkish" title="Video/Audio dieser Seite laden und transkribieren">Als Medium laden</button></form>{% endif %}
+        {% if s.media_path %}<form method="post" action="/s/{{ s.id }}/run/transcribe"><button class="linkish" onclick="return confirm('Neu transkribieren? Markierungen werden – soweit möglich – neu zugeordnet.')">Neu transkribieren</button></form>{% endif %}
+      </div>
+    </header>
+
+    {% if s.state in ('wartet', 'läuft') %}
+    <div class="notice working">
+      <span class="spinner"></span>
+      {% if jobs and jobs[0].type == 'transcribe' %}Transkription läuft – das kann je nach Länge einige Minuten dauern.
+      {% elif jobs and jobs[0].type == 'media' %}Medium wird heruntergeladen …
+      {% else %}Wird verarbeitet …{% endif %}
+      Die Seite aktualisiert sich automatisch.
+    </div>
+    {% elif s.state == 'fehler' %}
+    <div class="notice error">
+      <b>Verarbeitung fehlgeschlagen.</b> <code>{{ s.error }}</code>
+      <form method="post" action="/s/{{ s.id }}/run/retry"><button class="btn">Erneut versuchen</button></form>
+    </div>
+    {% endif %}
+
+    {% if s.media_path %}
+    <div class="player">
+      {% if s.kind == 'video' and (s.mime_type or '').startswith('video') %}
+      <video id="player" controls preload="metadata" src="/files/{{ s.media_path }}"></video>
+      {% else %}
+      <audio id="player" controls preload="metadata" src="/files/{{ s.media_path }}"></audio>
+      {% endif %}
+      {% if segments %}<label class="follow"><input type="checkbox" id="follow" checked> Transkript mitlaufen lassen</label>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if s.kind == 'image' and s.snapshot_path %}
+    <figure class="image"><img src="/files/{{ s.snapshot_path }}" alt="{{ s.title }}"></figure>
+    {% endif %}
+
+    {% if blocks %}
+    <div class="reader {{ 'transcript' if segments }}" id="reader">
+      {% for b in blocks %}
+      <div class="blk" data-off="{{ b.offset }}" {% if b.time is not none %}data-t="{{ b.time }}"{% endif %}>
+        {% if b.time is not none %}<button class="tc" type="button" tabindex="-1">{{ b.time|timecode }}</button>{% endif %}
+        <p class="txt">{{ b.html|safe }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif s.state == 'bereit' and s.kind != 'image' %}
+    <p class="empty">Kein Text vorhanden.{% if s.kind == 'note' %} Unten kannst du Text ergänzen.{% endif %}</p>
+    {% endif %}
+
+    {% if s.kind == 'note' %}
+    <details class="note-edit">
+      <summary>Notiztext bearbeiten</summary>
+      <form method="post" action="/s/{{ s.id }}/text">
+        <textarea name="text" rows="14">{{ s.text }}</textarea>
+        <button class="btn primary">Speichern</button>
+      </form>
+    </details>
+    {% endif %}
+  </article>
+
+  <aside class="sidebar">
+    <div class="side-tabs" role="tablist">
+      <button type="button" class="on" data-side="hl">Markierungen <small>{{ highlights|length }}</small></button>
+      <button type="button" data-side="meta">Einordnung</button>
+    </div>
+
+    <section class="side-pane on" data-pane="hl">
+      {% if not highlights and not orphans %}
+      <p class="hint">Text mit der Maus auswählen und eine Farbe wählen, um eine Stelle zu markieren.</p>
+      {% endif %}
+      <ul class="hl-list">
+        {% for h in highlights %}
+        <li class="hl-item c-{{ h.color|cslug }}" id="hl-{{ h.id }}" data-id="{{ h.id }}" data-off="{{ h.start_offset }}">
+          <blockquote class="jump">{{ h.quote|truncate(280) }}</blockquote>
+          {% if h.note %}<p class="hl-note">{{ h.note }}</p>{% endif %}
+          <div class="meta">
+            {% if h.media_time is not none %}<button class="tc-link" type="button" data-t="{{ h.media_time }}">▶ {{ h.media_time|timecode }}</button>{% endif %}
+            {% if h.event_date %}<span>betrifft {{ h.event_date|hdate }}</span>{% endif %}
+            {% for t in htags[h.id] %}<span class="tag">#{{ t }}</span>{% endfor %}
+          </div>
+          <details class="hl-edit">
+            <summary>Bearbeiten</summary>
+            <form data-hl-form="{{ h.id }}">
+              <textarea name="note" rows="3" placeholder="Notiz, Einordnung, offene Frage …">{{ h.note }}</textarea>
+              <div class="colors">
+                {% for c, label in COLORS.items() %}
+                <label class="swatch c-{{ c|cslug }}" title="{{ label }}"><input type="radio" name="color" value="{{ c }}" {{ 'checked' if h.color == c }}><span></span></label>
+                {% endfor %}
+              </div>
+              <input name="tags" value="{{ htags[h.id]|join(', ') }}" placeholder="Tags">
+              <input name="event_date" value="{{ h.event_date or '' }}" placeholder="Betrifft (Datum) – erscheint im Zeitstrahl">
+              <div class="row">
+                <button class="btn primary">Speichern</button>
+                <button class="btn danger" type="button" data-hl-delete="{{ h.id }}">Löschen</button>
+              </div>
+            </form>
+          </details>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if orphans %}
+      <h4 class="orphan-head">Nicht mehr im Text gefunden</h4>
+      <ul class="hl-list orphans">
+        {% for h in orphans %}
+        <li class="hl-item c-{{ h.color|cslug }}">
+          <blockquote>{{ h.quote|truncate(200) }}</blockquote>
+          {% if h.note %}<p class="hl-note">{{ h.note }}</p>{% endif %}
+          <button class="btn danger small" type="button" data-hl-delete="{{ h.id }}">Löschen</button>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+
+    <section class="side-pane" data-pane="meta">
+      <form method="post" action="/s/{{ s.id }}/edit" class="meta-form">
+        <label>Titel<input name="title" value="{{ s.title }}"></label>
+        <label>URL<input name="url" value="{{ s.url or '' }}"></label>
+        <div class="two">
+          <label>Autor:in<input name="author" value="{{ s.author }}"></label>
+          <label>Medium / Seite<input name="site_name" value="{{ s.site_name }}"></label>
+        </div>
+        <fieldset>
+          <legend>Zeitliche Einordnung</legend>
+          <label>Veröffentlicht<input name="published_at" value="{{ s.published_at or '' }}" placeholder="TT.MM.JJJJ, MM.JJJJ oder JJJJ"></label>
+          <div class="two">
+            <label>Betrifft ab<input name="event_date" value="{{ s.event_date or '' }}" placeholder="Ereignisdatum"></label>
+            <label>bis<input name="event_date_end" value="{{ s.event_date_end or '' }}" placeholder="optional"></label>
+          </div>
+          <p class="hint">Gesichert am {{ s.captured_at|hdatetime }} (automatisch).</p>
+        </fieldset>
+        <fieldset>
+          <legend>Bewertung</legend>
+          <div class="two">
+            <label>Status
+              <select name="status">{% for st in STATUSES %}<option {{ 'selected' if s.status == st }}>{{ st }}</option>{% endfor %}</select>
+            </label>
+            <label>Glaubwürdigkeit
+              <select name="credibility">
+                <option value="">–</option>
+                {% for n in range(1, 6) %}<option value="{{ n }}" {{ 'selected' if s.credibility == n }}>{{ '●' * n }}{{ '○' * (5 - n) }}</option>{% endfor %}
+              </select>
+            </label>
+          </div>
+        </fieldset>
+        <label>Tags<input name="tags" value="{{ tags|join(', ') }}" placeholder="Komma-getrennt"></label>
+        <label>Beschreibung<textarea name="description" rows="3">{{ s.description }}</textarea></label>
+        <label>Eigene Notizen<textarea name="notes" rows="4" placeholder="Einordnung, Kontakt, To-dos …">{{ s.notes }}</textarea></label>
+        <button class="btn primary">Speichern</button>
+      </form>
+
+      <dl class="facts">
+        {% if s.content_hash %}<dt>SHA-256</dt><dd><code class="hash">{{ s.content_hash }}</code></dd>{% endif %}
+        {% if s.mime_type %}<dt>Format</dt><dd>{{ s.mime_type }}</dd>{% endif %}
+        <dt>Angelegt</dt><dd>{{ s.created_at|hdatetime }}</dd>
+        <dt>Geändert</dt><dd>{{ s.updated_at|hdatetime }}</dd>
+      </dl>
+      {% if jobs %}
+      <details class="jobs"><summary>Verarbeitungsprotokoll</summary>
+        <ul>{% for j in jobs %}<li><b>{{ j.type }}</b> · {{ j.status }} · {{ j.created_at|hdatetime }}{% if j.error %}<br><code>{{ j.error }}</code>{% endif %}</li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+      <form method="post" action="/s/{{ s.id }}/delete" class="danger-zone" onsubmit="return confirm('Quelle mit allen Markierungen und Dateien löschen?')">
+        <button class="btn danger">Quelle löschen</button>
+      </form>
+    </section>
+  </aside>
+</div>
+
+<div id="seltool" class="seltool" hidden>
+  {% for c, label in COLORS.items() %}
+  <button type="button" class="swatch-btn c-{{ c|cslug }}" data-color="{{ c }}" title="{{ label }}"><span></span>{{ label }}</button>
+  {% endfor %}
+</div>
+{% endblock %}

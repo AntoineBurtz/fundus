@@ -1,0 +1,20 @@
+services:
+  fundus:
+    build: .
+    container_name: fundus
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Unraid: z. B. /mnt/user/appdata/fundus:/data
+      - ./data:/data
+    environment:
+      # Whisper-Modell: tiny | base | small | medium | large-v3
+      FUNDUS_WHISPER_MODEL: small
+      # Leer = automatisch erkennen, sonst z. B. "de"
+      FUNDUS_WHISPER_LANGUAGE: ""
+      # 1 = Videos komplett behalten (sonst nur Tonspur)
+      FUNDUS_KEEP_VIDEO: "0"
+      # Zugangsschutz – unbedingt setzen, wenn von außen erreichbar
+      FUNDUS_USER: fundus
+      FUNDUS_PASSWORD: ""
